@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Keyfactor.Extensions.AnyGateway.Company.Product
+namespace Keyfactor.Extensions.AnyGateway.HashicorpVault
 {
 	public class Constants
 	{

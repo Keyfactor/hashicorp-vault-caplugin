@@ -1,5 +1,13 @@
 # Introduction
-This AnyGateway plug-in enables issuance, revocation, and synchronization of certificates from <Company> <Product> offering.  
+This AnyGateway plug-in enables issuance, revocation, and synchronization of certificates from the Hashicorp Vault PKI Secrets Engine.  
+
+# Hashicorp Vault Authentication
+This plug-in supports two types of authentication into Hashicorp Vault.  
+1. Token
+1. Certificate
+
+When filling in the configuration values, if a value for "AuthToken" is present, it will be used.  If not, then the values for certificate location should be populated for Authentication via certificate.
+
 # Prerequisites
 
 ## Certificate Chain
@@ -37,7 +45,7 @@ This is the ID of the <Product> product to map to the specified template.
  ```
  
 ## Security
-The security section does not change specifically for the <Product> CA Gateway.  Refer to the AnyGateway Documentation for more detail.
+The security section does not change specifically for the Hashicorp Vault PKI CA Gateway.  Refer to the AnyGateway Documentation for more detail.
 ```json
   /*Grant permissions on the CA to users or groups in the local domain.
 	READ: Enumerate and read contents of certificates.
@@ -103,7 +111,16 @@ The CA Connection section will determine the API endpoint and configuration data
 
 ```json
   "CAConnection": {
-
+	"AuthToken":"<auth token value>",
+	"ClientCertificate": {
+        "StoreName": "My",
+        "StoreLocation": "LocalMachine",
+        "Thumbprint": "0123456789abcdef"
+    },
+    "Name": "TestUser",
+    "Email": "email@email.invalid",
+    "PhoneNumber": "0000000000",
+	"IgnoreExpired": "false"
   },
 ```
 ## GatewayRegistration

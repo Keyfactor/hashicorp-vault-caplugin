@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Keyfactor.Extensions.AnyGateway.Company.Product.APIProxy
+namespace Keyfactor.Extensions.AnyGateway.HashicorpVault.APIProxy
 {
 	public abstract class ProductNameBaseRequest
 	{
