@@ -14,13 +14,25 @@ namespace Keyfactor.Extensions.AnyGateway.HashicorpVault
 		[JsonProperty("Host")]
 		public string Host { get; set; }
 
-		[JsonProperty("EnginePath")]
-		public string EnginePath { get; set; }
+		[JsonProperty("MountPoint")]
+		public string MountPoint { get; set; }
 
 		[JsonProperty("Role")]
 		public string Role { get; set; }
 
 		[JsonProperty("Token")]
 		public string Token { get; set; }
-	}
+
+        [JsonProperty("ClientCertificate")]
+        public AuthCert ClientCertificate { get; set; }
+    }
+
+    public class AuthCert
+    {
+        public string StoreName { get; set; }
+        public string StoreLocation { get; set; }
+        public string Thumbprint { get; set; }
+        public string CertificatePath { get; set; }
+        public string CertificatePassword { get; set; }
+    }
 }

@@ -1,5 +1,4 @@
 ﻿using CAProxy.AnyGateway;
-using CAProxy.AnyGateway.Configuration;
 using CAProxy.AnyGateway.Interfaces;
 using CAProxy.AnyGateway.Models;
 using CAProxy.AnyGateway.Models.Configuration;
@@ -14,12 +13,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
-using System.Runtime.ConstrainedExecution;
-using System.Text;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
-using System.Threading.Tasks;
-using static CAProxy.AnyGateway.Constants;
 
 namespace Keyfactor.Extensions.AnyGateway.HashicorpVault
 {
@@ -44,13 +39,61 @@ namespace Keyfactor.Extensions.AnyGateway.HashicorpVault
         /// Initialize the <see cref="HashicorpVaultCAConnector"/>
         /// </summary>
         /// <param name="configProvider">The config provider contains information required to connect to the CA.</param>
-        public override void Initialize(ICAConnectorConfigProvider configProvider)
+        public override async void Initialize(ICAConnectorConfigProvider configProvider)
         {
             logger.MethodEntry(LogLevel.Trace);
             string rawConfig = JsonConvert.SerializeObject(configProvider.CAConnectionData);
             logger.LogTrace($"serialized config: {rawConfig}");
             Config = JsonConvert.DeserializeObject<HashicorpVaultCAConfig>(rawConfig);
-            _client = new HashicorpVaultClient(Config.Host);
+
+            X509Certificate2 clientCert = null;
+
+            if (!string.IsNullOrEmpty(Config.ClientCertificate?.Thumbprint))
+            {
+                //Cert auth, cert in Windows store
+                StoreName sn;
+                StoreLocation sl;
+                string thumbprint = Config.ClientCertificate.Thumbprint;
+
+                if (string.IsNullOrEmpty(thumbprint) ||
+                    !Enum.TryParse(Config.ClientCertificate.StoreName, out sn) ||
+                    !Enum.TryParse(Config.ClientCertificate.StoreLocation, out sl))
+                {
+                    throw new Exception("Unable to find client authentication certificate");
+                }
+
+                X509Certificate2Collection foundCerts;
+                using (X509Store currentStore = new X509Store(sn, sl))
+                {
+                    logger.LogTrace($"Search for client auth certificates with Thumbprint {thumbprint} in the {sn}{sl} certificate store");
+
+                    currentStore.Open(OpenFlags.ReadOnly | OpenFlags.OpenExistingOnly);
+                    foundCerts = currentStore.Certificates.Find(X509FindType.FindByThumbprint, thumbprint, true);
+                    logger.LogTrace($"Found {foundCerts.Count} certificates in the {currentStore.Name} store");
+                    currentStore.Close();
+                }
+                if (foundCerts.Count > 1)
+                {
+                    throw new Exception($"Multiple certificates with Thumbprint {thumbprint} found in the {sn}{sl} certificate store");
+                }
+                if (foundCerts.Count > 0)
+                    clientCert = foundCerts[0];
+            }
+            else if (!string.IsNullOrEmpty(Config.ClientCertificate.CertificatePath))
+            {
+                //Cert auth, cert in pfx file
+                try
+                {
+                    X509Certificate2 cert = new X509Certificate2(Config.ClientCertificate.CertificatePath, Config.ClientCertificate.CertificatePassword);
+                    clientCert = cert;
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception($"Unable to open the client certificate file with the given password. Error: {ex.Message}");
+                }
+            }
+            
+            _client = new HashicorpVaultClient(Config);
 
             logger.MethodExit(LogLevel.Trace);
         }
@@ -77,10 +120,9 @@ namespace Keyfactor.Extensions.AnyGateway.HashicorpVault
                 Logger.Trace($"Common Name: {commonName}");
                 var vaultHost = Config.Host;
                 var vaultRole = Config.Role;
-                var secretEnginePath = Config.EnginePath;
+                var secretEnginePath = Config.MountPoint;
 
-                var res = _client.SignCSR(csr, subject, san, Config.Role);
-
+                var res = _client.SignCSR(csr, subject, san, Config.Role).Result;
 
                 return new EnrollmentResult()
                 {
