@@ -50,8 +50,8 @@ namespace Keyfactor.Extensions.AnyGateway.HashicorpVault
             string rawConfig = JsonConvert.SerializeObject(configProvider.CAConnectionData);
             logger.LogTrace($"serialized config: {rawConfig}");
             Config = JsonConvert.DeserializeObject<HashicorpVaultCAConfig>(rawConfig);
-            _client = new HashicorpVaultClient();
-            GatewayCertificate
+            _client = new HashicorpVaultClient(Config.Host);
+
             logger.MethodExit(LogLevel.Trace);
         }
 
@@ -79,23 +79,27 @@ namespace Keyfactor.Extensions.AnyGateway.HashicorpVault
                 var vaultRole = Config.Role;
                 var secretEnginePath = Config.EnginePath;
 
-                var res = Client.
+                var res = _client.SignCSR(csr, subject, san, Config.Role);
 
 
                 return new EnrollmentResult()
                 {
-                    CARequestID = response.serial_number.Replace("-", "").Replace(":", ""),
+                    CARequestID = res.Data.SerialNumber.Replace("-", "").Replace(":", ""),
                     Status = (int)PKIConstants.Microsoft.RequestDisposition.ISSUED,
                     StatusMessage = $"Successfully enrolled for certificate {subject}",
-                    Certificate = response.certificate
+                    Certificate = res.Data.CertificateContent
                 };
-                // throw new NotImplementedException();
             }
 
-            catch (Exception ex) { 
-            
+            catch (Exception ex)
+            {
+                logger.LogError($"Error when performing enrollment: {ex.Message}");
+                throw;
             }
-            logger.MethodExit(LogLevel.Trace);
+            finally
+            {
+                logger.MethodExit(LogLevel.Trace);
+            }
         }
 
         /// <summary>

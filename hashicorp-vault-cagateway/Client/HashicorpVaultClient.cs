@@ -19,7 +19,9 @@ namespace Keyfactor.Extensions.AnyGateway.HashicorpVault.Client
             })
         
         }
-        public Secret<SignedCertificateData> SignCSR(string csr, string subject, Dictionary<string, string[]> san, string roleName)
+
+
+        public async Secret<SignedCertificateData> SignCSR(string csr, string subject, Dictionary<string, string[]> san, string roleName)
         {
 
             var reqOptions = new SignCertificatesRequestOptions();
