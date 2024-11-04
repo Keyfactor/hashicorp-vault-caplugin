@@ -7,24 +7,27 @@
 
 using Newtonsoft.Json;
 
-namespace Keyfactor.Extensions.AnyGateway.HashicorpVault
+namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 {
-	public class HashicorpVaultCAConfig
-	{
-		[JsonProperty("Host")]
-		public string Host { get; set; }
+    public class HashicorpVaultCAConfig
+    {
+        [JsonProperty("Host")]
+        public string Host { get; set; }
 
-		[JsonProperty("MountPoint")]
-		public string MountPoint { get; set; }
+        [JsonProperty("MountPoint")]
+        public string MountPoint { get; set; }
 
-		[JsonProperty("Role")]
-		public string Role { get; set; }
+        [JsonProperty("Token")]
+        public string Token { get; set; }
 
-		[JsonProperty("Token")]
-		public string Token { get; set; }
+        [JsonProperty("Namespace")]
+        public string Namespace { get; set; }
 
         [JsonProperty("ClientCertificate")]
         public AuthCert ClientCertificate { get; set; }
+
+        [JsonProperty("Enabled")]
+        public bool Enabled { get; set; }
     }
 
     public class AuthCert

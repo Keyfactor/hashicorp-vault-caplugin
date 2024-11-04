@@ -6,9 +6,11 @@ This plug-in supports two types of authentication into Hashicorp Vault.
 1. Token
 1. Certificate
 
-When filling in the configuration values, if a value for "AuthToken" is present, it will be used.  If not, then the values for certificate location should be populated for Authentication via certificate.
+When filling in the configuration values, if a value for "AuthToken" is present, it will be used.  If not, then the values for certificate location should be populated for Authentication via SSL certificate.
 
 # Prerequisites
+1. An instance of Hashicorp Vault v10.5+ that is accessible from the CA Gateway host
+1. 
 
 ## Certificate Chain
 

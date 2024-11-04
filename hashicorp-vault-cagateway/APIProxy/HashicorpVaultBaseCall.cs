@@ -1,14 +1,8 @@
 ﻿using Newtonsoft.Json;
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace Keyfactor.Extensions.AnyGateway.HashicorpVault.APIProxy
+namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 {
-	public abstract class ProductNameBaseRequest
+    public abstract class ProductNameBaseRequest
 	{
 		[JsonIgnore]
 		public string Resource { get; internal set; }

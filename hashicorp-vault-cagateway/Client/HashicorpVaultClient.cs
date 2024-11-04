@@ -1,12 +1,10 @@
-﻿using CAProxy.AnyGateway.Models;
-using Keyfactor.Logging;
+﻿using Keyfactor.Logging;
 using Microsoft.Extensions.Logging;
 using Org.BouncyCastle.Asn1.X509;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Threading.Tasks;
 using VaultSharp;
 using VaultSharp.V1.AuthMethods;
@@ -15,12 +13,12 @@ using VaultSharp.V1.AuthMethods.Token;
 using VaultSharp.V1.Commons;
 using VaultSharp.V1.SecretsEngines.PKI;
 
-namespace Keyfactor.Extensions.AnyGateway.HashicorpVault.Client
+namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 {
     public class HashicorpVaultClient
     {
         private VaultClient _vaultClient { get; set; }
-        private static readonly ILogger logger = Logging.LogHandler.GetClassLogger<HashicorpVaultClient>();
+        private static readonly ILogger logger = LogHandler.GetClassLogger<HashicorpVaultClient>();
         private string _mountPoint { get; set; }
 
         public HashicorpVaultClient(HashicorpVaultCAConfig config)
@@ -28,7 +26,7 @@ namespace Keyfactor.Extensions.AnyGateway.HashicorpVault.Client
             logger.MethodEntry();
             X509Certificate2 clientCert = null;
             IAuthMethodInfo authMethod = null;
-            _mountPoint = config.MountPoint;
+            _mountPoint = config.MountPoint ?? "pki";
             if (config.Token != null)
             {
                 logger.LogTrace("Token is present in config and will be used for authentication to Vault");
@@ -97,6 +95,7 @@ namespace Keyfactor.Extensions.AnyGateway.HashicorpVault.Client
 
         public async Task<Secret<SignedCertificateData>> SignCSR(string csr, string subject, Dictionary<string, string[]> san, string roleName)
         {
+            logger.MethodEntry();
 
             var reqOptions = new SignCertificatesRequestOptions();
 
@@ -144,14 +143,76 @@ namespace Keyfactor.Extensions.AnyGateway.HashicorpVault.Client
                 logger.LogTrace($"provided parameters -- vaultUri: {_vaultClient.Settings.VaultServerUriWithPort}, mountPoint: {_mountPoint}, roleName: {roleName}, commonName: {reqOptions.CommonName}, SANs: {reqOptions.SubjectAlternativeNames}");
                 throw;
             }
+            finally
+            {
+                logger.MethodExit();
+            }
         }
 
+        public async Task<Secret<CertificateData>> GetCertificate(string certSerial)
+        {
+            logger.MethodEntry();
 
+            try
+            {
+                logger.LogTrace($"requesting the certificate with serial number: {certSerial}");
+                var cert = await _vaultClient.V1.Secrets.PKI.ReadCertificateAsync(certSerial, _mountPoint);
+                logger.LogTrace($"successfully received a response for certificae with serial number: {cert.Data.SerialNumber}");
+                return cert;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"an error occurred attempting to retrieve certificate: {ex.Message}");
+                throw;
+            }
+            finally
+            {
+                logger.MethodExit();
+            }
+        }
 
+        public async Task RevokeCertificate(string serial)
+        {
+            logger.MethodEntry();
+            try
+            {
+                logger.LogTrace($"making request to revoke cert with serial: {serial}");
+                var response = await _vaultClient.V1.Secrets.PKI.RevokeCertificateAsync(serial, _mountPoint);
+                logger.LogTrace($"successfully revoked cert with serial {serial}, revocation time:  {response.Data.RevocationTime}");
 
-        // example using vaultsharp:
-        // var signCertificateRequestOptions = new SignCertificateRequestOptions { // initialize };
-        // Secret<SignedCertificateData> certSecret = await vaultClient.V1.Secrets.PKI.SignCertificateAsync(pkiRoleName, signCertificateRequestOptions);
-        // string certificateContent = certSecret.Data.CertificateContent;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"an error occurred when attempting to revoke the certificate: {ex.Message}");
+                throw;
+            }
+            finally { logger.MethodExit(); }
+        }
+
+        public async Task<bool> PingServer()
+        {
+            logger.MethodEntry();
+            logger.LogTrace($"performing a system health check request to Vault");
+            try
+            {
+                var res = await _vaultClient.V1.System.GetHealthStatusAsync();
+                logger.LogTrace($"-- Got a response --");
+                logger.LogTrace($"Vault version : {res.Version}");
+                logger.LogTrace($"enterprise instance : {res.Enterprise}");
+                logger.LogTrace($"initialized : {res.Initialized}");
+                logger.LogTrace($"sealed : {res.Sealed}");
+                logger.LogTrace($"server time UTC: {res.ServerTimeUtcUnixTimestamp}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Vault healthcheck failed with error: {ex.Message}");
+                throw;
+            }
+            finally
+            {
+                logger.MethodExit();
+            }
+        }
     }
 }
