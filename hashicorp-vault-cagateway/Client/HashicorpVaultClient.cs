@@ -19,32 +19,44 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
     {
         private VaultClient _vaultClient { get; set; }
         private static readonly ILogger logger = LogHandler.GetClassLogger<HashicorpVaultClient>();
-        private string _mountPoint { get; set; }
 
-        public HashicorpVaultClient(HashicorpVaultCAConfig config)
+        private string _hostUrl { get; set; }
+        private string _nameSpace { get; set; }
+        private string _mountPoint { get; set; }
+        private string _token { get; set; }
+        private AuthCert _certAuthInfo { get; set; }
+        private bool _useCertAuth { get; set; }
+
+
+        public HashicorpVaultClient(HashicorpVaultCAConfig caConfig, HashicorpVaultCATemplateConfig templateConfig = null)
         {
             logger.MethodEntry();
             X509Certificate2 clientCert = null;
             IAuthMethodInfo authMethod = null;
-            _mountPoint = config.MountPoint ?? "pki";
-            if (config.Token != null)
+
+            // set global values 
+            SetClientValuesFromConfigs(caConfig, templateConfig);
+
+            _mountPoint = _mountPoint ?? "pki"; // default to "pki" (vault default) if not specified.
+
+            if (!string.IsNullOrEmpty(_token))
             {
-                logger.LogTrace("Token is present in config and will be used for authentication to Vault");
-                authMethod = new TokenAuthMethodInfo(config.Token);
+                logger.LogTrace("Token is present in caConfig and will be used for authentication to Vault");
+                authMethod = new TokenAuthMethodInfo(_token);
             }
             else
             {
                 logger.LogTrace("No Token is present in the config.  Checking for certificate info for authentication");
 
-                if (!string.IsNullOrEmpty(config.ClientCertificate?.Thumbprint))
+                if (!string.IsNullOrEmpty(_certAuthInfo.Thumbprint))
                 {
                     logger.LogTrace("Thumbprint is present in config.  Retreiving cert for authentication from store");
                     //Cert auth, cert in Windows store
-                    string thumbprint = config.ClientCertificate.Thumbprint;
+                    string thumbprint = _certAuthInfo.Thumbprint;
 
-                    if (!Enum.TryParse(config.ClientCertificate.StoreName, out StoreName sn) || !Enum.TryParse(config.ClientCertificate.StoreLocation, out StoreLocation sl))
+                    if (!Enum.TryParse(_certAuthInfo.StoreName, out StoreName sn) || !Enum.TryParse(_certAuthInfo.StoreLocation, out StoreLocation sl))
                     {
-                        logger.LogError($"Both store name and store location values are needed to retreive the cert from the store.  Values from configuration - StoreName: {config.ClientCertificate.StoreName}, StoreLocation: {config.ClientCertificate.StoreLocation}");
+                        logger.LogError($"Both store name and store location values are needed to retreive the cert from the store.  Values from configuration - StoreName: {_certAuthInfo.StoreName}, StoreLocation: {_certAuthInfo.StoreLocation}");
                         throw new MissingFieldException("Unable to find client authentication certificate");
                     }
 
@@ -65,13 +77,13 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     if (foundCerts.Count > 0)
                         clientCert = foundCerts[0];
                 }
-                else if (!string.IsNullOrEmpty(config.ClientCertificate.CertificatePath))
+                else if (!string.IsNullOrEmpty(_certAuthInfo.CertificatePath))
                 {
-                    logger.LogTrace($"CertificatePath is present in config.  Will attempt to read cert from {config.ClientCertificate.CertificatePath}");
+                    logger.LogTrace($"CertificatePath is present in caConfig.  Will attempt to read cert from {_certAuthInfo.CertificatePath}");
                     //Cert auth, cert in pfx file
                     try
                     {
-                        X509Certificate2 cert = new X509Certificate2(config.ClientCertificate.CertificatePath, config.ClientCertificate.CertificatePassword);
+                        X509Certificate2 cert = new X509Certificate2(_certAuthInfo.CertificatePath, _certAuthInfo.CertificatePassword);
                         clientCert = cert;
                     }
                     catch (Exception ex)
@@ -87,7 +99,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             if (authMethod == null) throw new MissingFieldException($"Neither token or certificate data are present in the configuration.  Unable to configure Vault Authentication.");
 
-            _vaultClient = new VaultClient(new VaultClientSettings(config.Host, authMethod));
+            _vaultClient = new VaultClient(new VaultClientSettings(caConfig.Host, authMethod) { Namespace = _nameSpace });
 
             logger.MethodExit();
         }
@@ -157,7 +169,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             {
                 logger.LogTrace($"requesting the certificate with serial number: {certSerial}");
                 var cert = await _vaultClient.V1.Secrets.PKI.ReadCertificateAsync(certSerial, _mountPoint);
-                logger.LogTrace($"successfully received a response for certificae with serial number: {cert.Data.SerialNumber}");
+                logger.LogTrace($"successfully received a response for certificate with serial number: {cert.Data.SerialNumber}");
                 return cert;
             }
             catch (Exception ex)
@@ -213,6 +225,101 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             {
                 logger.MethodExit();
             }
+        }
+
+        public async Task GetDefaultIssuer()
+        {
+            logger.MethodEntry();
+            logger.LogTrace("Requesting the default issuer via an authenticated endpoint");
+            try
+            {
+                var res = await _vaultClient.V1.Secrets.PKI.ReadDefaultIssuerCertificateChainAsync(CertificateFormat.json, _mountPoint);
+                logger.LogTrace($"successfully retrieved the default issuer cert chain: {res.Data.CertificateContent}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"The attempt to read the default issuer certificate failed: {ex.Message}");
+                throw;
+            }
+            finally { logger.MethodExit(); }
+        }
+
+        public async Task<List<string>> GetAllCertSerialNumbers()
+        {
+            logger.MethodEntry();
+            var keys = new List<string>();
+            try
+            {
+                var res = await _vaultClient.V1.Secrets.PKI.ListCertificatesAsync(_mountPoint);
+                keys = res.Data.Keys;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"there was an error retreiving the certificate keys: {ex.Message}");
+                throw;
+            }
+            finally { logger.MethodExit(); }
+            return keys;
+        }
+
+        public async Task<List<string>> GetRevokedSerialNumbers()
+        {
+            logger.MethodEntry();
+            var keys = new List<string>();
+            try
+            {
+                var res = await _vaultClient.V1.Secrets.PKI.ListRevokedCertificatesAsync(_mountPoint);
+                keys = res.Data.Keys;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"there was an error retreiving the revoked certificate keys: {ex.Message}");
+                throw;
+            }
+            finally { logger.MethodExit(); }
+            return keys;
+        }
+
+        public async Task<List<string>> GetRoleNames()
+        {
+            throw new NotImplementedException();
+
+            logger.MethodEntry();
+            var roleNames = new List<string>();
+            try
+            {
+                // TODO: get updated version of VaultSharp that has methods for managing PKI Roles.
+                // there is an outstanding Github issue (https://github.com/rajanadar/VaultSharp/issues/373)
+
+                //roleNames = _vaultClient.V1.Secrets.PKI.
+            }
+            catch (Exception ex)
+            {
+
+            }
+            finally { logger.MethodExit(); }
+        }
+
+        private void SetClientValuesFromConfigs(HashicorpVaultCAConfig caConfig, HashicorpVaultCATemplateConfig templateConfig)
+        {
+            logger.MethodEntry();
+            // the authentication token, cert, namespace and mount point are read from the templateConfig unless missing
+
+            _hostUrl = caConfig.Host; // host url should always be in the CA config
+            logger.LogTrace($"set value for Host url: {_hostUrl}");
+
+            _certAuthInfo = templateConfig.ClientCertificate ?? caConfig.ClientCertificate;
+            logger.LogTrace($"set value for Certificate authentication; thumbprint: {_certAuthInfo?.Thumbprint ?? "(missing) - using token authentication"}");
+
+            _nameSpace = templateConfig.Namespace ?? caConfig.Namespace;
+            logger.LogTrace($"set value for Namespace: {_nameSpace}");
+
+            _mountPoint = templateConfig.MountPoint ?? caConfig.MountPoint;
+            logger.LogTrace($"set value for Mountpoint: {_mountPoint ?? "(missing) - will default to 'pki'"}");
+
+            _token = templateConfig.Token ?? caConfig.Token;
+            logger.LogTrace($"set value for authenetication token: {_token ?? "(missing) - using certificate authentication"}");
+            logger.MethodExit();
         }
     }
 }

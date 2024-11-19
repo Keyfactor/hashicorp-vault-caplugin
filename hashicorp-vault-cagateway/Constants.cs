@@ -16,9 +16,11 @@
         public static class TemplateConfig
         {
             public const string ROLENAME = "RoleName";
+            public const string ISSUER = "Issuer";
             public const string TOKEN = "Token";
             public const string CLIENTCERT = "ClientCertificate";
             public const string NAMESPACE = "Namespace";
+            public const string MOUNTPOINT = "MountPoint";
         }
     }
 }

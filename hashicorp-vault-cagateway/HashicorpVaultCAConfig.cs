@@ -11,22 +11,22 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 {
     public class HashicorpVaultCAConfig
     {
-        [JsonProperty("Host")]
+        [JsonProperty(Constants.CAConfig.HOST)]
         public string Host { get; set; }
 
-        [JsonProperty("MountPoint")]
+        [JsonProperty(Constants.CAConfig.MOUNTPOINT)]
         public string MountPoint { get; set; }
 
-        [JsonProperty("Token")]
+        [JsonProperty(Constants.CAConfig.TOKEN)]
         public string Token { get; set; }
 
-        [JsonProperty("Namespace")]
+        [JsonProperty(Constants.CAConfig.NAMESPACE)]
         public string Namespace { get; set; }
 
-        [JsonProperty("ClientCertificate")]
+        [JsonProperty(Constants.CAConfig.CLIENTCERT)]
         public AuthCert ClientCertificate { get; set; }
 
-        [JsonProperty("Enabled")]
+        [JsonProperty(Constants.CAConfig.ENABLED)]
         public bool Enabled { get; set; }
     }
 
