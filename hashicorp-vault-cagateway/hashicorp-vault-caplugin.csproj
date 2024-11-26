@@ -15,7 +15,16 @@
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
 		<PackageReference Include="System.Formats.Asn1" Version="9.0.0" />
 		<PackageReference Include="System.Text.Json" Version="9.0.0" />
-		<PackageReference Include="VaultSharp" Version="1.17.5.1" />
+		<PackageReference Include="VaultSharp" Version="1.17.5.2" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Update="vaultsharp_fork\VaultSharp.1.17.5.2.nupkg">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
+	  <None Update="vaultsharp_fork\VaultSharp.1.17.5.2.snupkg">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </None>
 	</ItemGroup>
 
 </Project>

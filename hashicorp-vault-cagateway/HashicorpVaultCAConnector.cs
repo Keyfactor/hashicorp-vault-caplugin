@@ -7,8 +7,10 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.ConstrainedExecution;
 using System.Threading;
 using System.Threading.Tasks;
+using VaultSharp.V1.SecretsEngines.PKI;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 {
@@ -108,15 +110,20 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             try
             {
                 var cert = await _client.GetCertificate(formattedSerial);
-
+                var revoked = cert.Data?.RevocationTime != null;
                 var result = new AnyCAPluginCertificate
                 {
                     CARequestID = caRequestID,
                     Certificate = cert.Data.CertificateContent,
-
-
-                    //TODO: get status and Issuer (ProductId).  Not available in this version of VaultSharp.  Pending issue https://github.com/rajanadar/VaultSharp/issues/366
+                    Status = cert.Data.RevocationTime != 0 ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
+                    // ProductID is not available via the API after the initial issuance.
+                    //TODO: Using unoffical version of VaultSharp to get the revocation datetime.  Pending issue https://github.com/rajanadar/VaultSharp/issues/366
                 };
+
+                if (result.Status == (int)EndEntityStatus.REVOKED)
+                {
+                    result.RevocationDate = cert.Data.RevocationTimeRFC3339?.DateTime;
+                }
 
                 return result;
             }
@@ -186,8 +193,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             logger.MethodEntry();
             var certSerials = new List<string>();
-            var revokedSerials = new List<string>();
-
+            var count = 0;
             try
             {
                 logger.LogTrace("getting all certificate serial numbers from vault");
@@ -199,54 +205,83 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 throw;
             }
 
-            try
-            {
-                logger.LogTrace("getting list of revoked serial numbers from vault");
-                revokedSerials = await _client.GetRevokedSerialNumbers();
-                logger.LogTrace($"got {revokedSerials.Count()} serial numbers for revoked certificates");
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"failed to get revoked certificates: {LogHandler.FlattenException(ex)}"); 
-            }
-
             logger.LogTrace($"got {certSerials.Count()} serial numbers. Begin checking status for each...");
 
             foreach (var certSerial in certSerials)
             {
-
-                var newStatus = -1;
+                RawCertificateData certFromVault = null;
                 var dbStatus = -1;
-
+                try
+                {
+                    logger.LogTrace("Getting cert details from vault");
+                    certFromVault = (await _client.GetCertificate(certSerial))?.Data;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError($"Failed to retreive details for certificate with serial number {certSerial} from Vault:  {LogHandler.FlattenException(ex)}");
+                    throw;
+                }
                 logger.LogTrace($"converting {certSerial} to database trackingId");
                 var trackingId = GetTrackingIdFromSerial(certSerial);
-
                 logger.LogTrace($"attempting to retreive status of cert with tracking id {trackingId} from the database");
 
                 try
                 {
                     dbStatus = await _certificateDataReader.GetStatusByRequestID(trackingId);
                 }
-                catch {
+                catch
+                {
                     logger.LogTrace($"tracking id {trackingId} was not found in the database.  it will be added.");
                 } // not found; keeps dbStatus == -1
 
-                if (dbStatus == -1) // it's missing; needs added
+                if (dbStatus == -1 || fullSync) // it's missing and needs added, or a full sync is requested
                 {
-                    
-                    
+                    logger.LogTrace($"adding cert with serial {certSerial} to the database.  fullsync is {fullSync}");
 
+                    var newCert = new AnyCAPluginCertificate
+                    {
+                        CARequestID = trackingId,
+                        Certificate = certFromVault.CertificateContent,
+                        Status = certFromVault.RevocationTime != 0 ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
+                        // ProductID is not available via the API after the initial issuance.  we do not want to overwrite
+                        // TODO: Using unoffical version of VaultSharp to get the revocation datetime.  Pending issue https://github.com/rajanadar/VaultSharp/issues/366
+                    };
+
+                    if (newCert.Status == (int)EndEntityStatus.REVOKED)
+                    {
+                        newCert.RevocationDate = certFromVault.RevocationTimeRFC3339?.DateTime;
+                    }
+                    try
+                    {
+                        blockingBuffer.Add(newCert);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError($"Failed to add the cert to the database: {LogHandler.FlattenException(ex)}");
+                        throw;
+                    }
                 }
-                if (dbStatus != (int)EndEntityStatus.GENERATED)  
+                else // the cert exists in the database; just update the status if necessary
                 {
-                    newStatus = revokedSerials.Exists(s => s == certSerial) ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED;
-                }
+                    var revoked = certFromVault.RevocationTimeRFC3339 != null;
 
+                    if (revoked && dbStatus != (int)EndEntityStatus.REVOKED)
+                    {
+                        // need to update the db status to reflect that it has been revoked.
+                        var newCert = new AnyCAPluginCertificate
+                        {
+                            CARequestID = trackingId,
+                            Certificate = certFromVault.CertificateContent,
+                            Status = (int)EndEntityStatus.REVOKED,
+                            RevocationDate = certFromVault.RevocationTimeRFC3339?.DateTime
+                            // ProductID is not available via the API after the initial issuance.  we do not want to overwrite                            
+                        };
+                    }
+                }
+                count++;
             }
-
-
-            
-
+            logger.LogTrace($"Completed sync of {count} certificates");
+            logger.MethodExit();
         }
 
 
@@ -264,7 +299,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.MethodExit(LogLevel.Trace);
                 return;
             }
-
             List<string> errors = new List<string>();
 
             // make sure required fields are defined..

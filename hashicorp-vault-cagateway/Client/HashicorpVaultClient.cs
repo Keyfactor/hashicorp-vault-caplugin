@@ -161,7 +161,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
         }
 
-        public async Task<Secret<CertificateData>> GetCertificate(string certSerial)
+        public async Task<Secret<RawCertificateData>> GetCertificate(string certSerial)
         {
             logger.MethodEntry();
 
@@ -169,7 +169,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             {
                 logger.LogTrace($"requesting the certificate with serial number: {certSerial}");
                 var cert = await _vaultClient.V1.Secrets.PKI.ReadCertificateAsync(certSerial, _mountPoint);
-                logger.LogTrace($"successfully received a response for certificate with serial number: {cert.Data.SerialNumber}");
+                logger.LogTrace($"successfully received a response for certificate with serial number: {certSerial}");
                 return cert;
             }
             catch (Exception ex)
@@ -282,22 +282,24 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
         public async Task<List<string>> GetRoleNames()
         {
-            throw new NotImplementedException();
-
             logger.MethodEntry();
             var roleNames = new List<string>();
             try
             {
-                // TODO: get updated version of VaultSharp that has methods for managing PKI Roles.
+                // TODO: using a local fork of VaultSharp that adds methods for interacting with PKI Roles
+                // replace with official package when available.
                 // there is an outstanding Github issue (https://github.com/rajanadar/VaultSharp/issues/373)
 
-                //roleNames = _vaultClient.V1.Secrets.PKI.
+                var roles = await _vaultClient.V1.Secrets.PKI.ListRolesAsync(_mountPoint);
+                roleNames = roles?.Data.Keys;
             }
             catch (Exception ex)
             {
-
+                logger.LogError($"There was a problem retreiving the PKI role names: {LogHandler.FlattenException(ex)}");
+                throw;
             }
             finally { logger.MethodExit(); }
+            return roleNames;
         }
 
         private void SetClientValuesFromConfigs(HashicorpVaultCAConfig caConfig, HashicorpVaultCATemplateConfig templateConfig)
