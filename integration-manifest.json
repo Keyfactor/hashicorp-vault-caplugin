@@ -1,12 +1,12 @@
 {
-  "$schema": "https://keyfactor.github.io/integration-manifest-schema.json",
-  "integration_type": "ca-gateway",
-  "name": "<Gateway Name Here>",
+  "$schema": "https://keyfactor.github.io/v2/integration-manifest-schema.json",
+  "integration_type": "anyca-plugin",
+  "name": "Hashicorp Vault AnyCA REST Gateway Plugin",
   "status": "prototype",
   "support_level": "community",
   "link_github": false,
   "update_catalog": false,
-  "description": "<Description Here>",
-  "gateway_framework": "10.x.x",
+  "description": "Hashicorp Vault PKI Secrets Engine integration using AnyCA REST Gateway framework",
+  "gateway_framework": "24.2.0",
    "release_dir": "UPDATE-THIS-WITH-PATH-TO-BINARY-BUILD-FOLDER"
 }
