@@ -1,93 +1,173 @@
-# cpr-cagateway-template
 
-## Template for new CA Gateway integrations
+# Hashicorp Vault AnyCA REST Gateway Plugin
 
-### Use this repository to create new integrations for new CA Gateway integration types. 
+Hashicorp Vault PKI Secrets Engine integration using AnyCA REST Gateway framework
+
+#### Integration status: Prototype - Demonstration quality. Not for use in customer environments.
+
+## About the Keyfactor 
 
 
-1. [Use this repository](#using-the-repository)
-1. [Update the integration-manifest.json](#updating-the-integration-manifest.json)
-1. [Add Keyfactor Bootstrap Workflow (keyfactor-bootstrap-workflow.yml)](#add-bootstrap)
-1. [Create required branches](#create-required-branches)
-1. [Replace template files/folders](#replace-template-files-and-folders)
-1. [Create initial prerelease](#create-initial-prerelease)
----
 
-#### Using the repository
-1. Select the ```Use this template``` button at the top of this page
-1. Update the repository name following [these guidelines](https://keyfactorinc.sharepoint.com/sites/IntegrationWiki/SitePages/GitHub-Processes.aspx#repository-naming-conventions) 
-    1. All repositories must be in lower-case
-	1. General pattern: company-product-type
-	1. e.g. hashicorp-vault-orchestator
-1. Click the ```Create repository``` button
+## Support for Hashicorp Vault AnyCA REST Gateway Plugin
 
----
+Hashicorp Vault AnyCA REST Gateway Plugin is open source and community supported, meaning that there is no support guaranteed from Keyfactor Support for these tools.
 
-#### Updating the integration-manifest.json
-
-*The following properties must be updated in the integration-manifest.json*
-
-Clone the repository locally, use vsdev.io, or the GitHub online editor to update the file.
-
-* "name": "Friendly name for the integration"
-	* This will be used in the readme file generation and catalog entries
-* "description": "Brief description of the integration."
-	* This will be used in the readme file generation
-	* If the repository description is empty this value will be used for the repository description upon creating a release branch
-* "release_dir": "PATH\\\TO\\\BINARY\\\RELEASE\\\OUTPUT\\\FOLDER"
-	* Path separators can be "\\\\" or "/"
-	* Be sure to specify the release folder name. This can be found by running a Release build and noting the output folder
-	* Example: "AzureAppGatewayOrchestrator\\bin\\Release"
-* "gateway_framework": "" string denoting the required command gateway framework version
----
-
-#### Add Bootstrap 
-Add Keyfactor Bootstrap Workflow (keyfactor-bootstrap-workflow.yml). This can be copied directly from the workflow templates or through the Actions tab
-* Directly:
-    1. Create a file named ```.github\workflows\keyfactor-bootstrap-workflow.yml``` 
-	1. Copy the contents of [keyfactor/.github/workflow-templates/keyfactor-bootstrap-workflow.yml](https://raw.githubusercontent.com/Keyfactor/.github/main/workflow-templates/keyfactor-bootstrap-workflow.yml) into the file created in the previous step
-* Actions tab:
-    1. Navigate to the [Actions tab](./actions) in the new repository
-	1. Click the ```New workflow``` button
-	1. Find the ```Keyfactor Bootstrap Workflow``` and click the ```Configure``` button
-	1. Click the ```Commit changes...``` button on this screen and the next to add the bootstrap workflow to the main branch
-	
-A new build will run the tasks of a *Push* trigger on the main branch
-
-*Ensure there are no errors during the workflow run in the Actions tab.*
-
----
-
-#### Create required branches 
-1. Create a release branch from main: release-1.0
-1. Create a dev branch from the starting with the devops id in the format ab#\<DevOps-ID>, e.g. ab#53535. 
-    1. For the cleanest pull request merge, create the dev branch from the release branch. 
-	1. Optionally, add a suffix to the branch name indicating initial release. e.g. ab#53535-initial-release
+###### To report a problem or suggest a new feature, use the **[Issues](../../issues)** tab. If you want to contribute actual bug fixes or proposed enhancements, use the **[Pull requests](../../pulls)** tab.
 
 ---
 
 
-#### Replace template files and folders
-1. Replace the contents of readme_source.md
-1. Create a CHANGELOG.md file in the root of the repository indicating ```1.0: Initial release```
-1. Replace the SampleOrchestratorExtension.sln solution file and SampleOrchestratorExtension folder with your new orchestrator dotnet solution
-1. Push your updates to the dev branch (ab#xxxxx)
-
 ---
 
 
-#### Create initial prerelease
-1. Create a pull request from the dev branch to the release-1.0 branch
+
+# Introduction
+This AnyGateway plug-in enables issuance, revocation, and synchronization of certificates from the Hashicorp Vault PKI Secrets Engine.  
+
+# Hashicorp Vault Authentication
+This plug-in supports two types of authentication into Hashicorp Vault.  
+1. Token
+1. Certificate
+
+When filling in the configuration values, if a value for "AuthToken" is present, it will be used.  If not, then the values for certificate location should be populated for Authentication via certificate.
+
+# Prerequisites
+
+## Certificate Chain
+
+In order to enroll for certificates the Keyfactor Command server must trust the trust chain. Once you create your Root and/or Subordinate CA, make sure to import the certificate chain into the AnyGateway and Command Server certificate store
 
 
-----
+# Install
+* Download latest successful build from [GitHub Releases](../../releases/latest)
 
-When the repository is ready for SE Demo, change the following property:
-* "status": "pilot"
+* Copy <GatewayDLL>.dll to the Program Files\Keyfactor\Keyfactor AnyGateway directory
 
-When the integration has been approved by Support and Delivery teams, change the following property:
-* "status": "production"
+* Update the CAProxyServer.config file
+  * Update the CAConnection section to point at the DigiCertCAProxy class
+  ```xml
+  <alias alias="CAConnector" type="Keyfactor.Extensions.AnyGateway.Company.Product.GatewayNameCAConnector, DLLName"/>
+  ```
 
-If the repository is ready to be published in the public catalog, the following properties must be updated:
-* "update_catalog": true
-* "link_github": true
+# Configuration
+The following sections will breakdown the required configurations for the AnyGatewayConfig.json file that will be imported to configure the AnyGateway.
+
+## Templates
+The Template section will map the CA's products to an AD template.
+* ```ProductID```
+This is the ID of the <Product> product to map to the specified template.
+
+ ```json
+  "Templates": {
+	"WebServer": {
+      "ProductID": "<productID>",
+      "Parameters": {
+      }
+   }
+}
+ ```
+ 
+## Security
+The security section does not change specifically for the Hashicorp Vault PKI CA Gateway.  Refer to the AnyGateway Documentation for more detail.
+```json
+  /*Grant permissions on the CA to users or groups in the local domain.
+	READ: Enumerate and read contents of certificates.
+	ENROLL: Request certificates from the CA.
+	OFFICER: Perform certificate functions such as issuance and revocation. This is equivalent to "Issue and Manage" permission on the Microsoft CA.
+	ADMINISTRATOR: Configure/reconfigure the gateway.
+	Valid permission settings are "Allow", "None", and "Deny".*/
+    "Security": {
+        "Keyfactor\\Administrator": {
+            "READ": "Allow",
+            "ENROLL": "Allow",
+            "OFFICER": "Allow",
+            "ADMINISTRATOR": "Allow"
+        },
+        "Keyfactor\\gateway_test": {
+            "READ": "Allow",
+            "ENROLL": "Allow",
+            "OFFICER": "Allow",
+            "ADMINISTRATOR": "Allow"
+        },		
+        "Keyfactor\\SVC_TimerService": {
+            "READ": "Allow",
+            "ENROLL": "Allow",
+            "OFFICER": "Allow",
+            "ADMINISTRATOR": "None"
+        },
+        "Keyfactor\\SVC_AppPool": {
+            "READ": "Allow",
+            "ENROLL": "Allow",
+            "OFFICER": "Allow",
+            "ADMINISTRATOR": "Allow"
+        }
+    }
+```
+## CerificateManagers
+The Certificate Managers section is optional.
+	If configured, all users or groups granted OFFICER permissions under the Security section
+	must be configured for at least one Template and one Requester. 
+	Uses "<All>" to specify all templates. Uses "Everyone" to specify all requesters.
+	Valid permission values are "Allow" and "Deny".
+```json
+  "CertificateManagers":{
+		"DOMAIN\\Username":{
+			"Templates":{
+				"MyTemplateShortName":{
+					"Requesters":{
+						"Everyone":"Allow",
+						"DOMAIN\\Groupname":"Deny"
+					}
+				},
+				"<All>":{
+					"Requesters":{
+						"Everyone":"Allow"
+					}
+				}
+			}
+		}
+	}
+```
+## CAConnection
+The CA Connection section will determine the API endpoint and configuration data used to connect to the <Product> API. 
+
+
+```json
+  "CAConnection": {
+	"AuthToken":"<auth token value>",
+	"ClientCertificate": {
+        "StoreName": "My",
+        "StoreLocation": "LocalMachine",
+        "Thumbprint": "0123456789abcdef"
+    },
+    "Name": "TestUser",
+    "Email": "email@email.invalid",
+    "PhoneNumber": "0000000000",
+	"IgnoreExpired": "false"
+  },
+```
+## GatewayRegistration
+There are no specific Changes for the GatewayRegistration section. Refer to the AnyGateway Documentation for more detail.
+```json
+  "GatewayRegistration": {
+    "LogicalName": "CASandbox",
+    "GatewayCertificate": {
+      "StoreName": "CA",
+      "StoreLocation": "LocalMachine",
+      "Thumbprint": "0123456789abcdef"
+    }
+  }
+```
+
+## ServiceSettings
+There are no specific Changes for the ServiceSettings section. Refer to the AnyGateway Documentation for more detail.
+```json
+  "ServiceSettings": {
+    "ViewIdleMinutes": 8,
+    "FullScanPeriodHours": 24,
+	"PartialScanPeriodMinutes": 240 
+  }
+```
+
+
