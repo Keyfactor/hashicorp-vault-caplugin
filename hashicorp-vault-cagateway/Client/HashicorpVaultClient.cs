@@ -310,16 +310,16 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             _hostUrl = caConfig.Host; // host url should always be in the CA config
             logger.LogTrace($"set value for Host url: {_hostUrl}");
 
-            _certAuthInfo = templateConfig.ClientCertificate ?? caConfig.ClientCertificate;
+            _certAuthInfo = templateConfig?.ClientCertificate ?? caConfig?.ClientCertificate;
             logger.LogTrace($"set value for Certificate authentication; thumbprint: {_certAuthInfo?.Thumbprint ?? "(missing) - using token authentication"}");
 
-            _nameSpace = templateConfig.Namespace ?? caConfig.Namespace;
+            _nameSpace = templateConfig?.Namespace ?? caConfig.Namespace;
             logger.LogTrace($"set value for Namespace: {_nameSpace}");
 
-            _mountPoint = templateConfig.MountPoint ?? caConfig.MountPoint;
+            _mountPoint = templateConfig?.MountPoint ?? caConfig.MountPoint;
             logger.LogTrace($"set value for Mountpoint: {_mountPoint ?? "(missing) - will default to 'pki'"}");
 
-            _token = templateConfig.Token ?? caConfig.Token;
+            _token = templateConfig?.Token ?? caConfig.Token;
             logger.LogTrace($"set value for authenetication token: {_token ?? "(missing) - using certificate authentication"}");
             logger.MethodExit();
         }

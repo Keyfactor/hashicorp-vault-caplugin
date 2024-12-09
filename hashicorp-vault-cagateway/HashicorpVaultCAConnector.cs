@@ -336,7 +336,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             {
                 var serializedConfig = JsonConvert.SerializeObject(connectionInfo);
 
-                logger.LogTrace($"deserializing the configuration values: {serializedConfig}");
+                logger.LogTrace($"deserializing the configuration values into the HashicorpVaultCAConfig object: {serializedConfig}");
 
                 config = JsonConvert.DeserializeObject<HashicorpVaultCAConfig>(JsonConvert.SerializeObject(connectionInfo));
             }
@@ -391,7 +391,11 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 errors.Add($"The '{Constants.TemplateConfig.ROLENAME}' is required.");
             }
 
-            throw new NotImplementedException();
+            // if any errors, throw
+            if (errors.Any())
+            {
+                throw new AnyCAValidationException(string.Join("\n", errors));
+            }
         }
 
         /// <summary>
@@ -404,9 +408,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             {
                 [Constants.CAConfig.HOST] = new PropertyConfigInfo()
                 {
-                    Comments = "The client certificate information used to authenticate with Vault (if configured to use certificate authentication). This can be either a Windows cert store name and location (e.g. 'My' and 'LocalMachine' for the Local Computer personal cert store) and thumbprint, or a PFX file and password.",
+                    Comments = "The hostname URI of the Hashicorp Vault server relative to this gateway host",
                     Hidden = false,
-                    DefaultValue = "https://<my-vault-instance",
+                    DefaultValue = "https://<my-vault-instance>:<port>",
                     Type = "String"
                 },
                 [Constants.CAConfig.NAMESPACE] = new PropertyConfigInfo()
@@ -419,7 +423,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 [Constants.CAConfig.MOUNTPOINT] = new PropertyConfigInfo()
                 {
                     Comments = "The mount point of the PKI secrets engine.",
-                    Hidden = true,
+                    Hidden = false,
                     DefaultValue = "pki",
                     Type = "String"
                 },
@@ -455,16 +459,16 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         {
             return new Dictionary<string, PropertyConfigInfo>()
             {
-                [Constants.TemplateConfig.NAMESPACE] = new PropertyConfigInfo()
-                {
-                    Comments = "OPTIONAL: The namespace of the path to the PKI engine (Vault Enterprise).  If missing, will use the value set in the CA Connector configuration.",
-                    Hidden = false,
-                    DefaultValue = "",
-                    Type = "String"
-                },
                 [Constants.TemplateConfig.ROLENAME] = new PropertyConfigInfo()
                 {
-                    Comments = "Required Vault PKI Role Name corresponding to this template.",
+                    Comments = "REQUIRED: Vault PKI Role Name corresponding to this template.",
+                    Hidden = false,
+                    DefaultValue = "PKI Secrets Engine Role Name",
+                    Type = "String"
+                },
+                [Constants.TemplateConfig.NAMESPACE] = new PropertyConfigInfo()
+                {
+                    Comments = "OPTIONAL: The namespace of the path to the PKI engine (Vault Enterprise); use only if different than the Namespace set in the Connector configuration",
                     Hidden = false,
                     DefaultValue = "",
                     Type = "String"
@@ -503,7 +507,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 throw new Exception($"The request is missing a {rdn} value");
             }
         }
-
         private static string GetSerialFromTrackingId(string trackingId)
         {
             // to convert to a vault certificate serial number, we need to split into 2 characters and rejoin with ":" between each.            
@@ -526,17 +529,17 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         {
             logger.MethodEntry();
             // Initialize should have been called in order to populate the caConfig and create the client.
-            var productIds = new List<string>();
             try
             {
-                productIds = _client.GetRoleNames().Result;
+                return _client.GetRoleNames().Result;
+
             }
             catch (Exception ex)
             {
                 logger.LogError($"Error retreiving role names: {ex.Message}");
+                throw;
             }
             finally { logger.MethodExit(); }
-            return productIds;
         }
 
         #endregion Helper Methods
