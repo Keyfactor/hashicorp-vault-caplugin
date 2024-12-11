@@ -1,4 +1,11 @@
-﻿using Keyfactor.AnyGateway.Extensions;
+﻿// Copyright 2024 Keyfactor
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
+// and limitations under the License.
+
+using Keyfactor.AnyGateway.Extensions;
 using Keyfactor.Logging;
 using Keyfactor.PKI.Enums.EJBCA;
 using Microsoft.Extensions.Logging;
@@ -283,7 +290,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.MethodExit();
         }
 
-
         /// <summary>
         /// Validates that the CA connection info is correct.
         /// </summary>
@@ -365,7 +371,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// </summary>
         /// <param name="productInfo">The product information.</param>
         /// <param name="connectionInfo">The CA connection information.</param>
-        public async Task ValidateProductInfo(EnrollmentProductInfo productInfo, Dictionary<string, object> connectionInfo)
+        public Task ValidateProductInfo(EnrollmentProductInfo productInfo, Dictionary<string, object> connectionInfo)
         {
             logger.MethodEntry();
             List<string> errors = new List<string>();
@@ -396,6 +402,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             {
                 throw new AnyCAValidationException(string.Join("\n", errors));
             }
+
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -472,23 +480,30 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     Hidden = false,
                     DefaultValue = "",
                     Type = "String"
-                },
-
-                [Constants.TemplateConfig.TOKEN] = new PropertyConfigInfo()
-                {
-                    Comments = "OPTIONAL: The default authentication token to use when authenticating into Vault if no value is set in the Template configuration.  If present, this will be used instead of Client Cert for authenticating into Vault.",
-                    Hidden = true,
-                    DefaultValue = "",
-                    Type = "String"
-                },
-                [Constants.TemplateConfig.CLIENTCERT] = new PropertyConfigInfo()
-                {
-                    Comments = "OPTIONAL: The client certificate information used to authenticate with Vault (if configured to use certificate authentication). This can be either a Windows cert store name and location (e.g. 'My' and 'LocalMachine' for the Local Computer personal cert store) and thumbprint, or a PFX file and password.",
-                    Hidden = false,
-                    DefaultValue = "",
-                    Type = "ClientCertificate"
-                },
+                }                
             };
+        }
+
+        /// <summary>
+        /// The product id's typically correspond to certificate types (TLS, Client Auth, etc.)
+        /// In the case of Hashicorp Vault, there aren't built-in product ID's.  We are using the PKI Role name.
+        /// </summary>
+        /// <returns></returns>
+        public List<string> GetProductIds()
+        {
+            logger.MethodEntry();
+            // Initialize should have been called in order to populate the caConfig and create the client.
+            try
+            {
+                return _client.GetRoleNames().Result;
+
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Error retreiving role names: {ex.Message}");
+                throw;
+            }
+            finally { logger.MethodExit(); }
         }
 
         #region Helper Methods
@@ -518,28 +533,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             // vault certificate serial numbers are formatted like this: 17:67:16:b0:b9:45:58:c0:3a:29:e3:cb:d6:98:33:7a:a6:3b:66:c1
             // we simply remove the ":"'s to convert to tracking ID
             return serialNumber.Replace(":", "");
-        }
-
-        /// <summary>
-        /// The product id's typically correspond to certificate types (TLS, Client Auth, etc.)
-        /// In the case of Hashicorp Vault, there aren't built-in product ID's.  We are using the PKI Role name.
-        /// </summary>
-        /// <returns></returns>
-        public List<string> GetProductIds()
-        {
-            logger.MethodEntry();
-            // Initialize should have been called in order to populate the caConfig and create the client.
-            try
-            {
-                return _client.GetRoleNames().Result;
-
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"Error retreiving role names: {ex.Message}");
-                throw;
-            }
-            finally { logger.MethodExit(); }
         }
 
         #endregion Helper Methods

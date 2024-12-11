@@ -18,9 +18,12 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<PackageReference Include="BouncyCastle.Cryptography" Version="2.5.0" />
 		<PackageReference Include="Keyfactor.AnyGateway.IAnyCAPlugin" Version="3.0.0" />
-		<PackageReference Include="Keyfactor.PKI" Version="7.5.0" />
+		<PackageReference Include="Keyfactor.Logging" Version="1.1.2" />
+		<PackageReference Include="Keyfactor.PKI" Version="5.5.0" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+		<PackageReference Include="System.Formats.Asn1" Version="8.0.1" />
 		<PackageReference Include="System.Text.Json" Version="9.0.0" />
 		<PackageReference Include="VaultSharp" Version="1.17.5.2" />
 	</ItemGroup>
