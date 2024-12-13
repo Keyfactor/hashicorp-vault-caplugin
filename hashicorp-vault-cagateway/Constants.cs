@@ -25,6 +25,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             public const string ROLENAME = "RoleName";
             public const string NAMESPACE = "Namespace";
             public const string MOUNTPOINT = "MountPoint";
+            public const string TOKEN = "Token";
         }
     }
 }

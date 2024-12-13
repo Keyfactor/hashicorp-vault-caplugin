@@ -6,22 +6,19 @@
 // and limitations under the License.
 
 using Newtonsoft.Json;
+using System;
 
-namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
+namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 {
-    public class HashicorpVaultCATemplateConfig
+    public class CertResponse
     {
-        [JsonProperty(Constants.TemplateConfig.ROLENAME)]
-        public string RoleName { get; set; }
+        [JsonProperty("certificate")]
+        public string Certificate { get; set; }
 
-        [JsonProperty(Constants.TemplateConfig.NAMESPACE)]
-        public string Namespace { get; set; }
+        [JsonProperty("revocation_time_rfc3339")]
+        public DateTime? RevocationTime { get; set; }
 
-        [JsonProperty(Constants.TemplateConfig.MOUNTPOINT)]
-        public string MountPoint { get; set; }
-
-
-        [JsonProperty(Constants.TemplateConfig.TOKEN)]
-        public string Token { get; set; }
+        [JsonProperty("issuer_id")]
+        public string IssuerId { get; set; }
     }
 }

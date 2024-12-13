@@ -6,23 +6,13 @@
 // and limitations under the License.
 
 using Newtonsoft.Json;
+using System.Collections.Generic;
 
-namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
+namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 {
-    public abstract class ProductNameBaseRequest
-	{
-		[JsonIgnore]
-		public string Resource { get; internal set; }
-
-		[JsonIgnore]
-		public string Method { get; internal set; }
-
-		[JsonIgnore]
-		public string targetURI { get; set; }
-
-		public string BuildParameters()
-		{
-			return "";
-		}
-	}
+    public class KeyedList
+    {
+        [JsonProperty("keys")]
+        public List<string> Entries { get; set; }
+    }
 }

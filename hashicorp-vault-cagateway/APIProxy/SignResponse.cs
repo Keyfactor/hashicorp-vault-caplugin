@@ -7,21 +7,23 @@
 
 using Newtonsoft.Json;
 
-namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
+namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 {
-    public class HashicorpVaultCATemplateConfig
+    public class SignResponse
     {
-        [JsonProperty(Constants.TemplateConfig.ROLENAME)]
-        public string RoleName { get; set; }
+        [JsonProperty("expiration")]
+        public string Expiration { get; set; }
 
-        [JsonProperty(Constants.TemplateConfig.NAMESPACE)]
-        public string Namespace { get; set; }
+        [JsonProperty("certificate")]
+        public string Certificate { get; set; }
 
-        [JsonProperty(Constants.TemplateConfig.MOUNTPOINT)]
-        public string MountPoint { get; set; }
+        [JsonProperty("issuing_ca")]
+        public string IssuingCA { get; set; }
 
+        [JsonProperty("ca_chain")]
+        public string CAChain { get; set; }
 
-        [JsonProperty(Constants.TemplateConfig.TOKEN)]
-        public string Token { get; set; }
+        [JsonProperty("serial_number")]
+        public string SerialNumber { get; set; }
     }
 }

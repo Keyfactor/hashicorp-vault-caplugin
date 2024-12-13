@@ -11,10 +11,13 @@
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
 	  <DebugType>embedded</DebugType>
+	  <Optimize>True</Optimize>
+	  <Deterministic>True</Deterministic>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
 	  <DebugType>embedded</DebugType>
+	  <Deterministic>True</Deterministic>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -23,18 +26,15 @@
 		<PackageReference Include="Keyfactor.Logging" Version="1.1.2" />
 		<PackageReference Include="Keyfactor.PKI" Version="5.5.0" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-		<PackageReference Include="System.Formats.Asn1" Version="8.0.1" />
+		<PackageReference Include="RestSharp" Version="112.1.0" />
+		<PackageReference Include="System.Formats.Asn1" Version="9.0.0" />
+		<PackageReference Include="System.Net.Http.WinHttpHandler" Version="9.0.0" />
 		<PackageReference Include="System.Text.Json" Version="9.0.0" />
-		<PackageReference Include="VaultSharp" Version="1.17.5.2" />
-	</ItemGroup>
+  </ItemGroup>
 
 	<ItemGroup>
-	  <None Update="vaultsharp_fork\VaultSharp.1.17.5.2.nupkg">
-	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	  </None>
-	  <None Update="vaultsharp_fork\VaultSharp.1.17.5.2.snupkg">
-	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	  </None>
+	  <Reference Include="VaultSharp">
+	    <HintPath>..\..\..\joevanwanzeeleKF\VaultSharp\src\VaultSharp\bin\Debug\net6.0\VaultSharp.dll</HintPath>
+	  </Reference>
 	</ItemGroup>
-
 </Project>

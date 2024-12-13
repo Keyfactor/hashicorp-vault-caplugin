@@ -6,10 +6,13 @@
 // and limitations under the License.
 
 using Keyfactor.AnyGateway.Extensions;
+using Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy;
 using Keyfactor.Logging;
 using Keyfactor.PKI.Enums.EJBCA;
 using Microsoft.Extensions.Logging;
+using Microsoft.Win32.SafeHandles;
 using Newtonsoft.Json;
+using Org.BouncyCastle.Crmf;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -61,12 +64,14 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         {
             logger.MethodEntry(LogLevel.Trace);
             logger.LogInformation($"Begin {enrollmentType} enrollment for {subject}");
+
             try
             {
                 logger.LogTrace("getting product info");
-                var serializedProductInfo = JsonConvert.SerializeObject(productInfo);
+                var serializedProductInfo = JsonConvert.SerializeObject(productInfo.ProductParameters);
                 logger.LogTrace($"got product info: {serializedProductInfo}");
                 var templateConfig = JsonConvert.DeserializeObject<HashicorpVaultCATemplateConfig>(serializedProductInfo);
+                templateConfig.RoleName = productInfo.ProductID; // product ID corresponds to RoleName
 
                 // create the client
                 logger.LogTrace("instantiating the client..");
@@ -77,21 +82,33 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogTrace($"Common Name: {commonName}");
 
                 var vaultRole = templateConfig.RoleName;
+                logger.LogTrace($"using vault role name {templateConfig.RoleName}");
+
+                logger.LogTrace($"Sending request with these values:");
+                logger.LogTrace($"csr: {csr}");
+                logger.LogTrace($"common_name: {commonName}");
+                logger.LogTrace($"sans:");
+                foreach (var entry in san)
+                {
+                    logger.LogTrace($"{entry.Key} : {string.Join(", ", entry.Value)}");
+                }
+
+                logger.LogTrace($"role: {vaultRole}");
 
                 var res = await _client.SignCSR(csr, subject, san, vaultRole);
+                logger.LogTrace($"back to calling method, cert content: {res.Certificate}");
 
                 return new EnrollmentResult()
                 {
-                    CARequestID = GetTrackingIdFromSerial(res.Data.SerialNumber),
+                    CARequestID = GetTrackingIdFromSerial(res.SerialNumber),
                     Status = (int)EndEntityStatus.NEW,
-                    StatusMessage = $"Successfully enrolled for certificate {subject}",
-                    Certificate = res.Data.CertificateContent
+                    StatusMessage = $"Successfully enrolled certificate {subject}",
+                    Certificate = res.Certificate,
                 };
             }
-
             catch (Exception ex)
             {
-                logger.LogError($"Error when performing enrollment: {ex.Message}");
+                logger.LogError($"Error when performing enrollment: {LogHandler.FlattenException(ex)}");
                 throw;
             }
             finally
@@ -116,20 +133,15 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             try
             {
                 var cert = await _client.GetCertificate(formattedSerial);
-                var revoked = cert.Data?.RevocationTime != null;
+                var revoked = cert.RevocationTime != null;
                 var result = new AnyCAPluginCertificate
                 {
                     CARequestID = caRequestID,
-                    Certificate = cert.Data.CertificateContent,
-                    Status = cert.Data.RevocationTime != 0 ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
-                    // ProductID is not available via the API after the initial issuance.
-                    //TODO: Using unoffical version of VaultSharp to get the revocation datetime.  Pending issue https://github.com/rajanadar/VaultSharp/issues/366
+                    Certificate = cert.Certificate,
+                    Status = revoked ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
+                    RevocationDate = cert.RevocationTime
+                    // ProductID = vaultRole // this is not avialable after issuance                                       
                 };
-
-                if (result.Status == (int)EndEntityStatus.REVOKED)
-                {
-                    result.RevocationDate = cert.Data.RevocationTimeRFC3339?.DateTime;
-                }
 
                 return result;
             }
@@ -215,12 +227,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             foreach (var certSerial in certSerials)
             {
-                RawCertificateData certFromVault = null;
+                CertResponse certFromVault = null;
                 var dbStatus = -1;
                 try
                 {
                     logger.LogTrace("Getting cert details from vault");
-                    certFromVault = (await _client.GetCertificate(certSerial))?.Data;
+                    certFromVault = await _client.GetCertificate(certSerial);
                 }
                 catch (Exception ex)
                 {
@@ -247,16 +259,11 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     var newCert = new AnyCAPluginCertificate
                     {
                         CARequestID = trackingId,
-                        Certificate = certFromVault.CertificateContent,
-                        Status = certFromVault.RevocationTime != 0 ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
-                        // ProductID is not available via the API after the initial issuance.  we do not want to overwrite
-                        // TODO: Using unoffical version of VaultSharp to get the revocation datetime.  Pending issue https://github.com/rajanadar/VaultSharp/issues/366
+                        Certificate = certFromVault.Certificate,
+                        Status = certFromVault.RevocationTime != null ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
+                        RevocationDate = certFromVault.RevocationTime ?? null,
                     };
 
-                    if (newCert.Status == (int)EndEntityStatus.REVOKED)
-                    {
-                        newCert.RevocationDate = certFromVault.RevocationTimeRFC3339?.DateTime;
-                    }
                     try
                     {
                         blockingBuffer.Add(newCert);
@@ -269,7 +276,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 }
                 else // the cert exists in the database; just update the status if necessary
                 {
-                    var revoked = certFromVault.RevocationTimeRFC3339 != null;
+                    var revoked = certFromVault.RevocationTime != null;
 
                     if (revoked && dbStatus != (int)EndEntityStatus.REVOKED)
                     {
@@ -277,9 +284,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                         var newCert = new AnyCAPluginCertificate
                         {
                             CARequestID = trackingId,
-                            Certificate = certFromVault.CertificateContent,
+                            Certificate = certFromVault.Certificate,
                             Status = (int)EndEntityStatus.REVOKED,
-                            RevocationDate = certFromVault.RevocationTimeRFC3339?.DateTime
+                            RevocationDate = certFromVault.RevocationTime
                             // ProductID is not available via the API after the initial issuance.  we do not want to overwrite                            
                         };
                     }
@@ -357,13 +364,14 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             try
             {
                 logger.LogTrace("making an authenticated request to the Vault server to verify credentials..");
-                await _client.GetDefaultIssuer();
+                //// TODO: await _client.();
             }
             catch (Exception ex)
             {
                 logger.LogError($"Authenticated request failed.  {ex.Message}");
                 throw;
             }
+            finally { logger.MethodExit(); }
         }
 
         /// <summary>
@@ -425,7 +433,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 {
                     Comments = "Default namespace to use in the path to the Vault PKI secrets engine (Vault Enterprise only).  This will only be used if there is no value for Namespace in the Template Parameters.",
                     Hidden = false,
-                    DefaultValue = "",
+                    DefaultValue = string.Empty,
                     Type = "String"
                 },
                 [Constants.CAConfig.MOUNTPOINT] = new PropertyConfigInfo()
@@ -439,14 +447,14 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 {
                     Comments = "The default authentication token to use when authenticating into Vault if no value is set in the Template configuration.  If present, this will be used instead of Client Cert for authenticating into Vault.",
                     Hidden = true,
-                    DefaultValue = "",
+                    DefaultValue = string.Empty,
                     Type = "String"
                 },
                 [Constants.CAConfig.CLIENTCERT] = new PropertyConfigInfo()
                 {
                     Comments = "The client certificate information used to authenticate with Vault (if configured to use certificate authentication). This can be either a Windows cert store name and location (e.g. 'My' and 'LocalMachine' for the Local Computer personal cert store) and thumbprint, or a PFX file and password.",
                     Hidden = false,
-                    DefaultValue = "",
+                    DefaultValue = string.Empty,
                     Type = "ClientCertificate"
                 },
                 [Constants.CAConfig.ENABLED] = new PropertyConfigInfo()
@@ -478,9 +486,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 {
                     Comments = "OPTIONAL: The namespace of the path to the PKI engine (Vault Enterprise); use only if different than the Namespace set in the Connector configuration",
                     Hidden = false,
-                    DefaultValue = "",
+                    DefaultValue = string.Empty,
                     Type = "String"
-                }                
+                }
             };
         }
 
@@ -495,8 +503,13 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             // Initialize should have been called in order to populate the caConfig and create the client.
             try
             {
-                return _client.GetRoleNames().Result;
-
+                var roleNames = _client.GetRoleNames().Result;
+                logger.LogTrace("got role names from vault: ");
+                foreach (var name in roleNames)
+                {
+                    logger.LogTrace(name);
+                }
+                return roleNames;
             }
             catch (Exception ex)
             {
