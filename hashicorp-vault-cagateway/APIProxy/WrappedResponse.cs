@@ -5,39 +5,35 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
 // and limitations under the License.
 
-using Newtonsoft.Json;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Text.Json.Serialization;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 {
     public class WrappedResponse<T>
     {
-        [JsonProperty("lease_id")]
+        [JsonPropertyName("lease_id")]
         public string LeaseId { get; set; }
 
-        [JsonProperty("renewable")]
+        [JsonPropertyName("renewable")]
         public bool Renewable { get; set; }
 
-        [JsonProperty("lease_duration")]
+        [JsonPropertyName("lease_duration")]
         public int LeaseDuration { get; set; }
 
-        [JsonProperty("auth")]
+        [JsonPropertyName("auth")]
         public string Auth { get; set; }
 
-        [JsonProperty("warnings")]
+        [JsonPropertyName("warnings")]
         public List<string> Warnings { get; set; }
 
-        [JsonProperty("mount_point")]
+        [JsonPropertyName("mount_point")]
         public string MountPoint { get; set; }
 
-        [JsonProperty("mount_running_plugin_version")]
+        [JsonPropertyName("mount_running_plugin_version")]
         public string PluginVersion { get; set; }
 
-        [JsonProperty("data")]
+        [JsonPropertyName("data")]
         public T Data { get; set; }
 
     }

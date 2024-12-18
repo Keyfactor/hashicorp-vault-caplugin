@@ -9,12 +9,11 @@ using Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy;
 using Keyfactor.Extensions.CAPlugin.HashicorpVault.Client;
 using Keyfactor.Logging;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using Org.BouncyCastle.Asn1.X509;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.Metadata.Ecma335;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
@@ -46,9 +45,14 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             var dnsNames = new List<string>();
 
-            if (san.ContainsKey("Dns"))
+            logger.LogTrace($"SAN values: ");
+            foreach (var key in san.Keys) {
+                logger.LogTrace($"{key}: {string.Join(",", san[key])}");            
+            }
+
+            if (san.ContainsKey("dnsname"))
             {
-                dnsNames = new List<string>(san["Dns"]);
+                dnsNames = new List<string>(san["dnsname"]);
                 logger.LogTrace($"the SAN contains DNS name{(dnsNames.Count > 1 ? 's' : string.Empty)}: {string.Join(",", dnsNames)}");
             }
             else
@@ -91,34 +95,34 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             var reqOptions = new SignRequest()
             {
                 CommonName = commonName,
-                AltNames = string.Join(",", san),
+                AltNames = dnsNames.Count > 0 ? string.Join(",", dnsNames) : null,
                 Format = "pem_bundle",
                 CSR = csr
             };
 
-            var response = new WrappedResponse<SignResponse>();
+            WrappedResponse<SignResponse> response = null;
 
             try
             {
                 logger.LogTrace($"sending request to vault..");
-                response = await _vaultHttp.PostAsync<WrappedResponse<SignResponse>>($"/sign/{roleName}", reqOptions);
+                response = await _vaultHttp.PostAsync<WrappedResponse<SignResponse>>($"sign/{roleName}", reqOptions);
 
                 logger.LogTrace($"got a response from vault..");
-                if (response.Warnings.Count > 0) { logger.LogWarning($"the response contained warnings: {string.Join(",", response.Warnings)}"); }
-                logger.LogTrace($"serialized response: {JsonConvert.SerializeObject(response)}");
+                if (response.Warnings?.Count > 0) { logger.LogWarning($"the response contained warnings: {string.Join(",", response.Warnings)}"); }
+                //logger.LogTrace($"serialized response: {JsonConvert.SerializeObject(response)}");
                 return response.Data;
             }
             catch (Exception ex)
             {
                 logger.LogError($"There was an error when submitting the request to Vault: {LogHandler.FlattenException(ex)}");
-                logger.LogTrace($"request: {JsonConvert.SerializeObject(reqOptions)}");
-                logger.LogTrace($"response: {JsonConvert.SerializeObject(response)}");
+                logger.LogTrace($"request: {JsonSerializer.Serialize(reqOptions)}");
+                logger.LogTrace($"response: {JsonSerializer.Serialize(response)}");
                 logger.LogTrace($"http client configuration: {_vaultHttp.Configuration}");
                 throw;
             }
             finally
             {
-                logger.MethodExit();
+                // logger.MethodExit();
             }
         }
 
@@ -243,7 +247,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             return keys;
         }
 
-        public async Task<List<string>> GetRoleNames()
+        public async Task<List<string>> GetRoleNamesAsync()
         {
             logger.MethodEntry();
             var roleNames = new List<string>();

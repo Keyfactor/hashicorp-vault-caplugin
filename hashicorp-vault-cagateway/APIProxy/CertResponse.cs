@@ -5,20 +5,20 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
 // and limitations under the License.
 
-using Newtonsoft.Json;
 using System;
+using System.Text.Json.Serialization;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 {
     public class CertResponse
     {
-        [JsonProperty("certificate")]
+        [JsonPropertyName("certificate")]
         public string Certificate { get; set; }
 
-        [JsonProperty("revocation_time_rfc3339")]
+        [JsonPropertyName("revocation_time_rfc3339")]
         public DateTime? RevocationTime { get; set; }
 
-        [JsonProperty("issuer_id")]
+        [JsonPropertyName("issuer_id")]
         public string IssuerId { get; set; }
     }
 }

@@ -5,14 +5,14 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
 // and limitations under the License.
 
-using Newtonsoft.Json;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 {
     public class KeyedList
     {
-        [JsonProperty("keys")]
+        [JsonPropertyName("keys")]
         public List<string> Entries { get; set; }
     }
 }

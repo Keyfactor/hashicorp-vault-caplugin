@@ -10,16 +10,14 @@ using Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy;
 using Keyfactor.Logging;
 using Keyfactor.PKI.Enums.EJBCA;
 using Microsoft.Extensions.Logging;
-using Microsoft.Win32.SafeHandles;
-using Newtonsoft.Json;
-using Org.BouncyCastle.Crmf;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Serialization;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using VaultSharp.V1.SecretsEngines.PKI;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 {
@@ -32,7 +30,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
         public HashicorpVaultCAConnector()
         {
-            logger = Logging.LogHandler.GetClassLogger<HashicorpVaultCAConnector>();
+            logger = LogHandler.GetClassLogger<HashicorpVaultCAConnector>();
+
+            JsonSerializerOptions options = new()
+            {
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault
+            };
         }
 
         /// <summary>
@@ -42,9 +45,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         public void Initialize(IAnyCAPluginConfigProvider configProvider, ICertificateDataReader certificateDataReader)
         {
             logger.MethodEntry(LogLevel.Trace);
-            string rawConfig = JsonConvert.SerializeObject(configProvider.CAConnectionData);
+            string rawConfig = JsonSerializer.Serialize(configProvider.CAConnectionData);
             logger.LogTrace($"serialized config: {rawConfig}");
-            _caConfig = JsonConvert.DeserializeObject<HashicorpVaultCAConfig>(rawConfig);
+            _caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(rawConfig);
             logger.MethodExit(LogLevel.Trace);
             _client = new HashicorpVaultClient(_caConfig);
         }
@@ -68,9 +71,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             try
             {
                 logger.LogTrace("getting product info");
-                var serializedProductInfo = JsonConvert.SerializeObject(productInfo.ProductParameters);
+                var serializedProductInfo = JsonSerializer.Serialize(productInfo.ProductParameters);
                 logger.LogTrace($"got product info: {serializedProductInfo}");
-                var templateConfig = JsonConvert.DeserializeObject<HashicorpVaultCATemplateConfig>(serializedProductInfo);
+                var templateConfig = JsonSerializer.Deserialize<HashicorpVaultCATemplateConfig>(serializedProductInfo);
                 templateConfig.RoleName = productInfo.ProductID; // product ID corresponds to RoleName
 
                 // create the client
@@ -347,11 +350,11 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             HashicorpVaultCAConfig config = null;
             try
             {
-                var serializedConfig = JsonConvert.SerializeObject(connectionInfo);
+                var serializedConfig = JsonSerializer.Serialize(connectionInfo);
 
                 logger.LogTrace($"deserializing the configuration values into the HashicorpVaultCAConfig object: {serializedConfig}");
 
-                config = JsonConvert.DeserializeObject<HashicorpVaultCAConfig>(JsonConvert.SerializeObject(connectionInfo));
+                config = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(JsonSerializer.Serialize(connectionInfo));
             }
             catch (Exception ex)
             {
@@ -363,8 +366,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             try
             {
-                logger.LogTrace("making an authenticated request to the Vault server to verify credentials..");
-                //// TODO: await _client.();
+                logger.LogTrace("making an authenticated request to the Vault server to verify credentials (listing role names)..");
+                var roleNames = await _client.GetRoleNamesAsync();
+                logger.LogTrace($"success: received response containing {roleNames.Count()} role names");
             }
             catch (Exception ex)
             {
@@ -389,8 +393,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             // deserialize the values
             try
             {
-                templateConfig = JsonConvert.DeserializeObject<HashicorpVaultCATemplateConfig>(JsonConvert.SerializeObject(productInfo));
-                caConfig = JsonConvert.DeserializeObject<HashicorpVaultCAConfig>(JsonConvert.SerializeObject(connectionInfo));
+                templateConfig = JsonSerializer.Deserialize<HashicorpVaultCATemplateConfig>(JsonSerializer.Serialize(productInfo));
+                caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(JsonSerializer.Serialize(connectionInfo));
                 logger.LogTrace("successfully deserialized the product and CA config values.");
             }
             catch (Exception ex)
@@ -503,7 +507,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             // Initialize should have been called in order to populate the caConfig and create the client.
             try
             {
-                var roleNames = _client.GetRoleNames().Result;
+                var roleNames = _client.GetRoleNamesAsync().Result;
                 logger.LogTrace("got role names from vault: ");
                 foreach (var name in roleNames)
                 {

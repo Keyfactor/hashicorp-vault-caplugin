@@ -8,11 +8,11 @@
 using Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy;
 using Keyfactor.Logging;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
-using Org.BouncyCastle.Asn1.Smime;
 using RestSharp;
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
@@ -23,25 +23,28 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
 
         private static readonly ILogger logger = LogHandler.GetClassLogger<VaultHttp>();
 
-        private string _vaultHostUrl { get; set; }
-        private string _namespace { get; set; }
+        //private string _vaultHostUrl { get; set; }
+        //private string _namespace { get; set; }
         private string _mountPoint { get; set; }
-        private string _authToken { get; set; }
+        //private string _authToken { get; set; }
         private RestClient _restClient { get; set; }
 
         public VaultHttp(string host, string mountPoint, string authToken, string nameSpace = null)
         {
-            //_vaultHostUrl = host;
-            //_namespace = nameSpace;
-            //_mountPoint = mountPoint;
-            //_authToken = authToken;
 
-            var restClientOptions = new RestClientOptions($"{host}/v1/");
+            var restClientOptions = new RestClientOptions($"{host.TrimEnd('/')}/v1");
+            //{
+            //    Interceptors = [ new CompatibilityInterceptor {
+            //    OnBeforeDeserialization = _ => { _.ContentType = "application/json"; } // vault doesn't send this header, but always sends JSON
+            //}]};
+            _mountPoint = mountPoint.TrimStart('/').TrimEnd('/'); // remove leading and trailing slashes
+            logger.LogTrace($"mount point: {_mountPoint}");
             _restClient = new RestClient(restClientOptions);
+            //_restClient.AddDefaultHeader(KnownHeaders.ContentType, "application/json");
             _restClient.AddDefaultHeader("X-Vault-Request", "true");
             _restClient.AddDefaultHeader("X-Vault-Token", authToken);
             if (nameSpace != null) _restClient.AddDefaultHeader("X-Vault-Namespace", nameSpace);
-            _restClient.AcceptedContentTypes = ContentType.JsonAccept;
+
         }
 
         /// <summary>
@@ -55,9 +58,11 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
         public async Task<T> GetAsync<T>(string path, Dictionary<string, string> parameters = null)
         {
             logger.MethodEntry();
+            logger.LogTrace($"preparing to send GET request to {path} with parameters {JsonSerializer.Serialize(parameters)}");
+            logger.LogTrace($"will attempt to deserialize the response into a {typeof(T)}");
             try
             {
-                var request = new RestRequest($"{_mountPoint}/{path}", Method.Get).AddObject(parameters);
+                var request = new RestRequest($"{_mountPoint}/{path}", Method.Get).AddJsonBody(parameters);
                 var response = await _restClient.ExecuteGetAsync<T>(request);
 
                 response.ThrowIfError();
@@ -75,17 +80,45 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
             }
         }
 
-        public async Task<T> PostAsync<T>(string path, object parameters = null)
+        public async Task<T> PostAsync<T>(string path, dynamic parameters = default)
         {
             logger.MethodEntry();
+            var resourcePath = $"{_mountPoint}/{path}";
+            logger.LogTrace($"preparing to send POST request to {_restClient.Options.BaseUrl}{resourcePath}");
+            logger.LogTrace($"will attempt to deserialize the response into a {typeof(T)}");
+            JsonSerializerOptions options = new() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
+            string serializedParams = JsonSerializer.Serialize(parameters, options);
+            logger.LogTrace($"serialized parameters (from {parameters.GetType()?.Name}): {serializedParams}");
+
             try
             {
-                var request = new RestRequest($"{_mountPoint}/{path}", Method.Post).AddObject(parameters);
-                var response = await _restClient.ExecuteGetAsync<T>(request);
+                var request = new RestRequest(resourcePath, Method.Post).AddStringBody(serializedParams, DataFormat.Json);
 
-                response.ThrowIfError();
+                logger.LogTrace($"full url for the request: {_restClient.Options.BaseUrl}/{request.Resource}");
 
-                return response.Data;
+                logger.LogTrace($"Added the parameters to the request: {JsonSerializer.Serialize(request.Parameters)}");
+
+                var response = await _restClient.ExecutePostAsync(request);
+                string content = response.Content.ToString();
+                logger.LogTrace($"request completed. response content returned: {content}");
+                //response.ThrowIfError();
+                logger.LogTrace($"response.StatusCode: {response.StatusCode}");
+                logger.LogTrace($"response.contentType: {response.ContentType}");
+                logger.LogTrace($"response.Content: {content}");
+                logger.LogTrace($"response.ErrorMessage: {response.ErrorMessage}");
+                T result;
+
+                ErrorResponse errorResponse = null;
+                if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                {
+                    errorResponse = JsonSerializer.Deserialize<ErrorResponse>(response.Content);
+                    var allErrors = string.Join(",", errorResponse.Errors);
+                    logger.LogTrace($"errors: {allErrors}");
+                    throw new Exception(allErrors);
+                }
+
+                result = JsonSerializer.Deserialize<T>(response.Content);
+                return result;
             }
             catch (Exception ex)
             {
@@ -104,7 +137,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
 
             try
             {
-                return await _restClient.GetAsync<SealStatusResponse>("/v1/sys/seal-status");
+                return await _restClient.GetAsync<SealStatusResponse>("sys/seal-status");
             }
             catch (Exception ex)
             {
@@ -121,7 +154,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
             // using this method to verify connectivity
             try
             {
-                var response = await _restClient.GetAsync<dynamic>("v1/sys/capabilities/self");
+                var response = await _restClient.GetAsync<dynamic>("sys/capabilities/self");
                 response.ThrowIfError();
                 return response.Content?.data?.capabilities as List<string>;
             }
@@ -133,6 +166,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
             finally { logger.MethodExit(); }
         }
 
-        public string Configuration { get { return JsonConvert.SerializeObject(_restClient.Options); } }
+        public string Configuration { get { return _restClient.Options.ToString(); } }
     }
 }

@@ -5,25 +5,26 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
 // and limitations under the License.
 
-using Newtonsoft.Json;
+using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 {
     public class SignResponse
     {
-        [JsonProperty("expiration")]
-        public string Expiration { get; set; }
+        [JsonPropertyName("expiration")]
+        public int Expiration { get; set; }
 
-        [JsonProperty("certificate")]
+        [JsonPropertyName("certificate")]
         public string Certificate { get; set; }
 
-        [JsonProperty("issuing_ca")]
+        [JsonPropertyName("issuing_ca")]
         public string IssuingCA { get; set; }
 
-        [JsonProperty("ca_chain")]
-        public string CAChain { get; set; }
+        [JsonPropertyName("ca_chain")]
+        public List<string> CAChain { get; set; }
 
-        [JsonProperty("serial_number")]
+        [JsonPropertyName("serial_number")]
         public string SerialNumber { get; set; }
     }
 }

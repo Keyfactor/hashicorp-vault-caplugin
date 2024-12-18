@@ -5,28 +5,28 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
 // and limitations under the License.
 
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 {
     public class HashicorpVaultCAConfig
     {
-        [JsonProperty(Constants.CAConfig.HOST)]
+        [JsonPropertyName(Constants.CAConfig.HOST)]
         public string Host { get; set; }
 
-        [JsonProperty(Constants.CAConfig.MOUNTPOINT)]
+        [JsonPropertyName(Constants.CAConfig.MOUNTPOINT)]
         public string MountPoint { get; set; }
 
-        [JsonProperty(Constants.CAConfig.TOKEN)]
+        [JsonPropertyName(Constants.CAConfig.TOKEN)]
         public string Token { get; set; }
 
-        [JsonProperty(Constants.CAConfig.NAMESPACE)]
+        [JsonPropertyName(Constants.CAConfig.NAMESPACE)]
         public string Namespace { get; set; }
 
-        [JsonProperty(Constants.CAConfig.CLIENTCERT)]
+        [JsonPropertyName(Constants.CAConfig.CLIENTCERT)]
         public AuthCert ClientCertificate { get; set; }
 
-        [JsonProperty(Constants.CAConfig.ENABLED)]
+        [JsonPropertyName(Constants.CAConfig.ENABLED)]
         public bool Enabled { get; set; }
     }
 
