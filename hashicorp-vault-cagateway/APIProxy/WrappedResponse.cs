@@ -5,6 +5,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
 // and limitations under the License.
 
+using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
@@ -16,10 +17,10 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
         public string LeaseId { get; set; }
 
         [JsonPropertyName("renewable")]
-        public bool Renewable { get; set; }
+        public bool? Renewable { get; set; }
 
         [JsonPropertyName("lease_duration")]
-        public int LeaseDuration { get; set; }
+        public int? LeaseDuration { get; set; }
 
         [JsonPropertyName("auth")]
         public string Auth { get; set; }

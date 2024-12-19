@@ -39,11 +39,13 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.MethodExit();
         }
 
-        public async Task<SignResponse> SignCSR(string csr, string subject, Dictionary<string, string[]> san, string roleName)
+        public async Task<WrappedResponse<SignResponse>> SignCSR(string csr, string subject, Dictionary<string, string[]> san, string roleName)
         {
             logger.MethodEntry();
 
             var dnsNames = new List<string>();
+            SignRequest request = null;
+            WrappedResponse<SignResponse> response = null;
 
             logger.LogTrace($"SAN values: ");
             foreach (var key in san.Keys) {
@@ -79,50 +81,50 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogWarning(LogHandler.FlattenException(ex));
             }
 
-            if (commonName == null)
-            {
-                logger.LogTrace("no CN present; will use first DNS name (if present)");
-                if (dnsNames.Count > 0)
-                {
-                    commonName = dnsNames[0];
-                }
-                else
-                {
-                    throw new Exception("No Common Name or DNS SAN provided, unable to enroll");
-                }
-            }
-
-            var reqOptions = new SignRequest()
-            {
-                CommonName = commonName,
-                AltNames = dnsNames.Count > 0 ? string.Join(",", dnsNames) : null,
-                Format = "pem_bundle",
-                CSR = csr
-            };
-
-            WrappedResponse<SignResponse> response = null;
-
             try
             {
-                logger.LogTrace($"sending request to vault..");
-                response = await _vaultHttp.PostAsync<WrappedResponse<SignResponse>>($"sign/{roleName}", reqOptions);
+                if (commonName == null)
+                {
+                    logger.LogTrace("no CN present; will use first DNS name (if present)");
+                    if (dnsNames.Count > 0)
+                    {
+                        commonName = dnsNames[0];
+                    }
+                    else
+                    {
+                        throw new Exception("No Common Name or DNS SAN provided, unable to enroll");
+                    }
+                }
 
+                request = new SignRequest()
+                {
+                    CommonName = commonName,
+                    AltNames = dnsNames.Count > 0 ? string.Join(",", dnsNames) : null,
+                    Format = "pem_bundle",
+                    CSR = csr
+                };
+
+                logger.LogTrace($"sending request to vault..");
+                response = await _vaultHttp.PostAsync<WrappedResponse<SignResponse>>($"sign/{roleName}", request);
                 logger.LogTrace($"got a response from vault..");
-                if (response.Warnings?.Count > 0) { logger.LogWarning($"the response contained warnings: {string.Join(",", response.Warnings)}"); }
-                //logger.LogTrace($"serialized response: {JsonConvert.SerializeObject(response)}");
-                return response.Data;
+
+                if (response.Warnings?.Count() > 0) { logger.LogTrace($"the response contained warnings: {string.Join(", ", response.Warnings)}"); }
+                
+                logger.LogTrace($"serialized SignResponse: {JsonSerializer.Serialize(response.Data)}");                
+                
+                return response;
             }
             catch (Exception ex)
             {
                 logger.LogError($"There was an error when submitting the request to Vault: {LogHandler.FlattenException(ex)}");
-                logger.LogTrace($"request: {JsonSerializer.Serialize(reqOptions)}");
+                logger.LogTrace($"request: {JsonSerializer.Serialize(request)}");
                 logger.LogTrace($"response: {JsonSerializer.Serialize(response)}");
                 logger.LogTrace($"http client configuration: {_vaultHttp.Configuration}");
                 throw;
             }
             finally
             {
-                // logger.MethodExit();
+                logger.MethodExit();
             }
         }
 

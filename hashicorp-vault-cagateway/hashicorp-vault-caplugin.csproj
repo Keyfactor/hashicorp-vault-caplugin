@@ -4,22 +4,29 @@
 		<TargetFramework>net6.0</TargetFramework>
 		<RootNamespace>Keyfactor.Extensions.CAPlugin.HashicorpVault</RootNamespace>
 		<ImplicitUsings>disable</ImplicitUsings>
-		<Nullable>disable</Nullable>
+		<Nullable>warnings</Nullable>
 		<AssemblyName>HashicorpVaultCAPlugin</AssemblyName>
 		<ProduceReferenceAssembly>False</ProduceReferenceAssembly>
-		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<CopyLocalLockFileAssemblies>True</CopyLocalLockFileAssemblies>
 		<LangVersion>12.0</LangVersion>
+		<AppendTargetFrameworkToOutputPath>False</AppendTargetFrameworkToOutputPath>
+		<AppendRuntimeIdentifierToOutputPath>False</AppendRuntimeIdentifierToOutputPath>
+
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
 	  <DebugType>embedded</DebugType>
-	  <Optimize>True</Optimize>
+	  <Optimize>False</Optimize>
 	  <Deterministic>True</Deterministic>
+		<BaseOutputPath>bin</BaseOutputPath>
+		<AppendTargetFrameworkToOutputPath>False</AppendTargetFrameworkToOutputPath>
+		<AppendRuntimeIdentifierToOutputPath>False</AppendRuntimeIdentifierToOutputPath>
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
 	  <DebugType>embedded</DebugType>
 	  <Deterministic>True</Deterministic>
+	  <Optimize>True</Optimize>
 	</PropertyGroup>
 
 	<ItemGroup>

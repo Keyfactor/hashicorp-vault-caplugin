@@ -27,14 +27,18 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         private HashicorpVaultCAConfig _caConfig { get; set; }
         private HashicorpVaultClient _client { get; set; }
         private ICertificateDataReader _certificateDataReader;
+        private JsonSerializerOptions _serializerOptions;
 
         public HashicorpVaultCAConnector()
         {
             logger = LogHandler.GetClassLogger<HashicorpVaultCAConnector>();
 
-            JsonSerializerOptions options = new()
+            _serializerOptions = new()
             {
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+                RespectNullableAnnotations = true,
+                PropertyNameCaseInsensitive = true,
+                PreferredObjectCreationHandling = JsonObjectCreationHandling.Replace,
             };
         }
 
@@ -67,14 +71,15 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         {
             logger.MethodEntry(LogLevel.Trace);
             logger.LogInformation($"Begin {enrollmentType} enrollment for {subject}");
-
+            WrappedResponse<SignResponse> wrappedResponse = null;
+            string statusMessage;
             try
             {
                 logger.LogTrace("getting product info");
                 var serializedProductInfo = JsonSerializer.Serialize(productInfo.ProductParameters);
                 logger.LogTrace($"got product info: {serializedProductInfo}");
                 var templateConfig = JsonSerializer.Deserialize<HashicorpVaultCATemplateConfig>(serializedProductInfo);
-                templateConfig.RoleName = productInfo.ProductID; // product ID corresponds to RoleName
+                templateConfig!.RoleName = productInfo.ProductID; // product ID corresponds to RoleName
 
                 // create the client
                 logger.LogTrace("instantiating the client..");
@@ -98,26 +103,54 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
                 logger.LogTrace($"role: {vaultRole}");
 
-                var res = await _client.SignCSR(csr, subject, san, vaultRole);
-                logger.LogTrace($"back to calling method, cert content: {res.Certificate}");
+                wrappedResponse = await _client.SignCSR(csr, subject, san, vaultRole);
+                var serialized = JsonSerializer.Serialize<WrappedResponse<SignResponse>>(wrappedResponse, _serializerOptions);
+                logger.LogTrace($"back to calling method");
+                logger.LogTrace($"returned values:");
+                logger.LogTrace($"serialized response: {serialized}");
+                logger.LogTrace($"certificate: {wrappedResponse.Data?.Certificate}"); // skipped???
+                logger.LogTrace($"ca_chain: {string.Join(", ", wrappedResponse.Data?.CAChain!)}");
+                logger.LogTrace($"serial number: {wrappedResponse.Data?.SerialNumber}");
+                logger.LogTrace($"issuing CA: {wrappedResponse.Data?.IssuingCA}"); // skipped???
+                logger.LogTrace($"expiration: {wrappedResponse.Data?.Expiration}");
 
-                return new EnrollmentResult()
+                statusMessage = $"Successfully enrolled certificate {subject}";
+                if (wrappedResponse.Warnings.Count > 0)
                 {
-                    CARequestID = GetTrackingIdFromSerial(res.SerialNumber),
-                    Status = (int)EndEntityStatus.NEW,
-                    StatusMessage = $"Successfully enrolled certificate {subject}",
-                    Certificate = res.Certificate,
+                    statusMessage += "\nBut warnings were returned from Vault: \n";
+                    foreach (var warning in wrappedResponse.Warnings)
+                    {
+                        statusMessage += $"\n{warning}";
+                    }
+                }
+                var signResponse = wrappedResponse.Data;
+                var trackingId = GetTrackingIdFromSerial(signResponse?.SerialNumber);
+                logger.LogTrace($"tracking id from serial: {trackingId}");
+                logger.LogTrace($"successfully enrolled, returning Enrollment result.");
+
+                var enrollmentResult = new EnrollmentResult()
+                {
+                    CARequestID = trackingId,
+                    Status = (int)EndEntityStatus.GENERATED,
+                    StatusMessage = statusMessage,
+                    Certificate = signResponse?.Certificate,
                 };
+
+                logger.LogTrace($"success!  returning enrollmentresult: {JsonSerializer.Serialize(enrollmentResult)}");
+                return enrollmentResult;
             }
             catch (Exception ex)
             {
-                logger.LogError($"Error when performing enrollment: {LogHandler.FlattenException(ex)}");
-                throw;
+                statusMessage = LogHandler.FlattenException(ex);
+                logger.LogError($"Error when performing enrollment: {statusMessage}");
             }
-            finally
+            logger.LogTrace($"returning failed wrappedResponse");
+            return new EnrollmentResult()
             {
-                logger.MethodExit();
-            }
+                Status = (int)EndEntityStatus.FAILED,
+                StatusMessage = statusMessage,
+                CARequestID = string.Empty,
+            };
         }
 
         /// <summary>
@@ -368,7 +401,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             {
                 logger.LogTrace("making an authenticated request to the Vault server to verify credentials (listing role names)..");
                 var roleNames = await _client.GetRoleNamesAsync();
-                logger.LogTrace($"success: received response containing {roleNames.Count()} role names");
+                logger.LogTrace($"success: received wrappedResponse containing {roleNames.Count()} role names");
             }
             catch (Exception ex)
             {
