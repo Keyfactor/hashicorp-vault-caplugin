@@ -2,15 +2,11 @@
 This AnyGateway plug-in enables issuance, revocation, and synchronization of certificates from the Hashicorp Vault PKI Secrets Engine.  
 
 # Hashicorp Vault Authentication
-This plug-in supports two types of authentication into Hashicorp Vault.  
-1. Token
-1. Certificate
-
-When filling in the configuration values, if a value for "AuthToken" is present, it will be used.  If not, then the values for certificate location should be populated for Authentication via SSL certificate.
+Currently this plug-in only supports Token authentication.  
 
 # Prerequisites
 1. An instance of Hashicorp Vault v10.5+ that is accessible from the CA Gateway host
-1. 
+1. An instance of the CA Gateway Framework (REST version)
 
 ## Certificate Chain
 
@@ -18,15 +14,26 @@ In order to enroll for certificates the Keyfactor Command server must trust the 
 
 
 # Install
-* Download latest successful build from [GitHub Releases](../../releases/latest)
+* Download latest successful build from [GitHub Releases](https://github.com/Keyfactor/hashicorp-vault-caplugin/releases/latest)
 
-* Copy <GatewayDLL>.dll to the Program Files\Keyfactor\Keyfactor AnyGateway directory
+* Copy the contents of the release zip file into the (AnyGatewayRest Installation Folder)\AnyGatewayREST\net6.0\Extensions AnyGateway directory.
+* example path: "C:\Program Files\Keyfactor\HashiVaultCA\AnyGatewayREST\net6.0\Extensions"
 
-* Update the CAProxyServer.config file
-  * Update the CAConnection section to point at the DigiCertCAProxy class
-  ```xml
-  <alias alias="CAConnector" type="Keyfactor.Extensions.AnyGateway.Company.Product.GatewayNameCAConnector, DLLName"/>
-  ```
+* The _manifest.json_ tells the Gateway how to locate our plugin.  It should be copied to the *Connectors* sub-folder in the above path. 
+
+#### _manifest.json_
+```json
+{
+  "extensions": {
+    "Keyfactor.AnyGateway.Extensions.IAnyCAPlugin": {
+      "HashicorpVaultCAPlugin": {
+        "assemblypath": "../HashicorpVaultCAPlugin.dll",
+        "TypeFullName": "Keyfactor.Extensions.CAPlugin.HashicorpVault.HashicorpVaultCAConnector"
+      }
+    }
+  }
+}
+```
 
 # Configuration
 The following sections will breakdown the required configurations for the AnyGatewayConfig.json file that will be imported to configure the AnyGateway.
