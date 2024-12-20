@@ -5,18 +5,18 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
 // and limitations under the License.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Text.Json.Serialization;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 {
-    public class TokenLookupResponse
+    public class RevokeRequest
     {
-        public List<string> IdentityPolicies { get; set; }
-        public List<string> Policies { get; set; }
-        public string DisplayName { get; set; }
+        [JsonPropertyName("serial_number")]
+        public string SerialNumber { get; set; }
+
+        public RevokeRequest(string serialNumber)
+        {
+            SerialNumber = serialNumber;
+        }
     }
 }

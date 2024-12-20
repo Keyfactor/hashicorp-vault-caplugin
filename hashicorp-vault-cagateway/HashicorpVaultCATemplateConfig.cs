@@ -20,7 +20,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         [JsonPropertyName(Constants.TemplateConfig.MOUNTPOINT)]
         public string MountPoint { get; set; }
 
-
         [JsonPropertyName(Constants.TemplateConfig.TOKEN)]
         public string Token { get; set; }
     }

@@ -18,17 +18,15 @@ using System.Threading.Tasks;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 {
+    /// <summary>
+    /// This is our client for interacting with the Hashicorp Vault API.
+    /// It wraps our vault http client with the ability to translate objects
+    /// to and from what is needed for Vault API requests.
+    /// </summary>
     public class HashicorpVaultClient
     {
         private VaultHttp _vaultHttp { get; set; }
         private static readonly ILogger logger = LogHandler.GetClassLogger<HashicorpVaultClient>();
-
-        //private string _hostUrl { get; set; }
-        //private string _nameSpace { get; set; }
-        //private string _mountPoint { get; set; }
-        //private string _token { get; set; }
-        // private AuthCert _certAuthInfo { get; set; }
-        // private bool _useCertAuth { get; set; }
 
         public HashicorpVaultClient(HashicorpVaultCAConfig caConfig, HashicorpVaultCATemplateConfig templateConfig = null)
         {
@@ -39,13 +37,15 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.MethodExit();
         }
 
-        public async Task<WrappedResponse<SignResponse>> SignCSR(string csr, string subject, Dictionary<string, string[]> san, string roleName)
+        public async Task<SignResponse> SignCSR(string csr, string subject, Dictionary<string, string[]> san, string roleName)
         {
             logger.MethodEntry();
 
             var dnsNames = new List<string>();
             SignRequest request = null;
             WrappedResponse<SignResponse> response = null;
+            X509Name subjectParsed = null;
+            string commonName = null, organization = null, orgUnit = null;
 
             logger.LogTrace($"SAN values: ");
             foreach (var key in san.Keys) {
@@ -62,16 +62,14 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogTrace("the provided SANs contain no DNS names");
             }
 
-            X509Name subjectParsed = null;
-            string commonName = null, organization = null, orgUnit = null;
             try
             {
-                logger.LogTrace($"parsing the subject:  {subject}");
+                logger.LogTrace($"parsing the subject: {subject}");
                 subjectParsed = new X509Name(subject);
                 commonName = subjectParsed.GetValueList(X509Name.CN).Cast<string>().LastOrDefault();
                 logger.LogTrace($"CN: {commonName}");
                 organization = subjectParsed.GetValueList(X509Name.O).Cast<string>().LastOrDefault();
-                logger.LogTrace($"Organization: {organization}");
+                logger.LogTrace($"Org: {organization}");
                 orgUnit = subjectParsed.GetValueList(X509Name.OU).Cast<string>().LastOrDefault();
                 logger.LogTrace($"OU: {orgUnit}");
             }
@@ -105,21 +103,19 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 };
 
                 logger.LogTrace($"sending request to vault..");
+                logger.LogTrace($"serialized request: {JsonSerializer.Serialize(request)}");
                 response = await _vaultHttp.PostAsync<WrappedResponse<SignResponse>>($"sign/{roleName}", request);
                 logger.LogTrace($"got a response from vault..");
 
-                if (response.Warnings?.Count() > 0) { logger.LogTrace($"the response contained warnings: {string.Join(", ", response.Warnings)}"); }
+                if (response.Warnings?.Count > 0) { logger.LogTrace($"the response contained warnings: {string.Join(", ", response.Warnings)}"); }
                 
-                logger.LogTrace($"serialized SignResponse: {JsonSerializer.Serialize(response.Data)}");                
-                
-                return response;
+                logger.LogTrace($"serialized SignResponse: {JsonSerializer.Serialize(response.Data)}");        
+               
+                return response.Data;
             }
             catch (Exception ex)
             {
                 logger.LogError($"There was an error when submitting the request to Vault: {LogHandler.FlattenException(ex)}");
-                logger.LogTrace($"request: {JsonSerializer.Serialize(request)}");
-                logger.LogTrace($"response: {JsonSerializer.Serialize(response)}");
-                logger.LogTrace($"http client configuration: {_vaultHttp.Configuration}");
                 throw;
             }
             finally
@@ -131,10 +127,10 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         public async Task<CertResponse> GetCertificate(string certSerial)
         {
             logger.MethodEntry();
+            logger.LogTrace($"requesting the certificate with serial number: {certSerial}");
 
             try
             {
-                logger.LogTrace($"requesting the certificate with serial number: {certSerial}");
                 var response = await _vaultHttp.GetAsync<CertResponse>($"cert/{certSerial}");
                 logger.LogTrace($"successfully received a response for certificate with serial number: {certSerial}");
                 return response;
@@ -150,15 +146,15 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
         }
 
-        public async Task RevokeCertificate(string serial)
+        public async Task<RevokeResponse> RevokeCertificate(string serial)
         {
             logger.MethodEntry();
+            logger.LogTrace($"making request to revoke cert with serial: {serial}");
             try
-            {
-                logger.LogTrace($"making request to revoke cert with serial: {serial}");
-                var response = await _vaultHttp.PostAsync<RevokeResponse>("revoke");
+            {                
+                var response = await _vaultHttp.PostAsync<RevokeResponse>("revoke", new RevokeRequest(serial));
                 logger.LogTrace($"successfully revoked cert with serial {serial}, revocation time:  {response.RevocationTime}");
-
+                return response;
             }
             catch (Exception ex)
             {
@@ -192,23 +188,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
         }
 
-        //public async Task GetDefaultIssuer()
-        //{
-        //    logger.MethodEntry();
-        //    logger.LogTrace("Requesting the default issuer via an authenticated endpoint");
-        //    try
-        //    {
-        //        var res = await _vaultClient.V1.Secrets.PKI.ReadDefaultIssuerCertificateChainAsync(CertificateFormat.json, _mountPoint);
-        //        logger.LogTrace($"successfully retrieved the default issuer cert chain: {res.Data.CertificateContent}");
-        //    }
-        //    catch (Exception ex)
-        //    {
-        //        logger.LogError($"The attempt to read the default issuer certificate failed: {ex.Message}");
-        //        throw;
-        //    }
-        //    finally { logger.MethodExit(); }
-        //}
-
         /// <summary>
         /// Retreives all serial numbers for issued certificates 
         /// </summary>
@@ -228,7 +207,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 throw;
             }
             finally { logger.MethodExit(); }
-            return keys;
         }
 
         private async Task<List<string>> GetRevokedSerialNumbers()
@@ -255,20 +233,17 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             var roleNames = new List<string>();
             try
             {
-                // TODO: using a local fork of VaultSharp that adds methods for interacting with PKI Roles
-                // replace with official package when available.
-                // there is an outstanding Github issue (https://github.com/rajanadar/VaultSharp/issues/373)
-
-                //var roles = await _vaultClient.V1.Secrets.PKI.ListRolesAsync(_mountPoint);
-                roleNames = await _vaultHttp.GetAsync<List<string>>("roles");
+                logger.LogTrace("getting the role names as a wrapped keyed-list response..");
+                var response = await _vaultHttp.GetAsync<WrappedResponse<KeyedList>>("roles/?list=true");
+                logger.LogTrace($"received {response.Data?.Entries?.Count} role names (or product IDs)");
+                return response.Data?.Entries;
             }
             catch (Exception ex)
             {
                 logger.LogError($"There was a problem retreiving the PKI role names: {LogHandler.FlattenException(ex)}");
                 throw;
             }
-            finally { logger.MethodExit(); }
-            return roleNames;
+            finally { logger.MethodExit(); }            
         }
 
         private void SetClientValuesFromConfigs(HashicorpVaultCAConfig caConfig, HashicorpVaultCATemplateConfig templateConfig)
@@ -276,7 +251,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.MethodEntry();
 
             var hostUrl = caConfig.Host; // host url and authentication details come from the CA config
-
             var token = caConfig.Token;
             var nameSpace = string.IsNullOrEmpty(templateConfig?.Namespace) ? caConfig.Namespace : templateConfig.Namespace; // Namespace comes from templateconfig if available, otherwise defaults to caConfig; can be null
             var mountPoint = string.IsNullOrEmpty(templateConfig?.MountPoint) ? caConfig.MountPoint : templateConfig.MountPoint; // Mountpoint comes from templateconfig if available, otherwise defaults to caConfig; if null, uses "pki" (Vault Default)
@@ -298,6 +272,15 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             _vaultHttp = new VaultHttp(hostUrl, mountPoint, token, nameSpace);
 
             logger.MethodExit();
+        }
+
+        private static string ConvertSerialToTrackingId(string serialNumber)
+        {
+            // vault returns certificate serial formatted thusly: 17:67:16:b0:b9:45:58:c0:3a:29:e3:cb:d6:98:33:7a:a6:3b:66:c1
+            // we cannot use the ':' character as part of our internal tracking id, but Vault requests can work with either ':' or '-'
+            // so we convert from colon-separated pairs to hyphen separated pairs.
+
+            return serialNumber.Replace(":", "-");
         }
     }
 }

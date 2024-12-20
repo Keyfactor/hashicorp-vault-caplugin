@@ -71,10 +71,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         {
             logger.MethodEntry(LogLevel.Trace);
             logger.LogInformation($"Begin {enrollmentType} enrollment for {subject}");
-            WrappedResponse<SignResponse> wrappedResponse = null;
             string statusMessage;
+            SignResponse signResponse;
+
             try
             {
+
                 logger.LogTrace("getting product info");
                 var serializedProductInfo = JsonSerializer.Serialize(productInfo.ProductParameters);
                 logger.LogTrace($"got product info: {serializedProductInfo}");
@@ -90,53 +92,33 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogTrace($"Common Name: {commonName}");
 
                 var vaultRole = templateConfig.RoleName;
-                logger.LogTrace($"using vault role name {templateConfig.RoleName}");
 
-                logger.LogTrace($"Sending request with these values:");
-                logger.LogTrace($"csr: {csr}");
-                logger.LogTrace($"common_name: {commonName}");
-                logger.LogTrace($"sans:");
-                foreach (var entry in san)
-                {
-                    logger.LogTrace($"{entry.Key} : {string.Join(", ", entry.Value)}");
-                }
+                logger.LogTrace($"using vault role name {vaultRole}");
 
-                logger.LogTrace($"role: {vaultRole}");
+                signResponse = await _client.SignCSR(csr, subject, san, vaultRole);
 
-                wrappedResponse = await _client.SignCSR(csr, subject, san, vaultRole);
-                var serialized = JsonSerializer.Serialize<WrappedResponse<SignResponse>>(wrappedResponse, _serializerOptions);
+                // trace logs
                 logger.LogTrace($"back to calling method");
                 logger.LogTrace($"returned values:");
-                logger.LogTrace($"serialized response: {serialized}");
-                logger.LogTrace($"certificate: {wrappedResponse.Data?.Certificate}"); // skipped???
-                logger.LogTrace($"ca_chain: {string.Join(", ", wrappedResponse.Data?.CAChain!)}");
-                logger.LogTrace($"serial number: {wrappedResponse.Data?.SerialNumber}");
-                logger.LogTrace($"issuing CA: {wrappedResponse.Data?.IssuingCA}"); // skipped???
-                logger.LogTrace($"expiration: {wrappedResponse.Data?.Expiration}");
-
-                statusMessage = $"Successfully enrolled certificate {subject}";
-                if (wrappedResponse.Warnings.Count > 0)
-                {
-                    statusMessage += "\nBut warnings were returned from Vault: \n";
-                    foreach (var warning in wrappedResponse.Warnings)
-                    {
-                        statusMessage += $"\n{warning}";
-                    }
-                }
-                var signResponse = wrappedResponse.Data;
-                var trackingId = GetTrackingIdFromSerial(signResponse?.SerialNumber);
-                logger.LogTrace($"tracking id from serial: {trackingId}");
+                logger.LogTrace($"certificate: contains {signResponse.Certificate.Length} characters");
+                logger.LogTrace($"ca_chain: {signResponse.CAChain.Count} certs in chain");
+                logger.LogTrace($"serial number: {signResponse.SerialNumber}");
+                logger.LogTrace($"issuing CA: {signResponse.IssuingCA}"); // skipped???
+                logger.LogTrace($"expiration: {signResponse.Expiration}");
+                logger.LogTrace($"tracking id from serial: {signResponse.SerialNumber}");
                 logger.LogTrace($"successfully enrolled, returning Enrollment result.");
+
+                statusMessage = $"Successfully enrolled certificate {commonName}";
 
                 var enrollmentResult = new EnrollmentResult()
                 {
-                    CARequestID = trackingId,
+                    CARequestID = signResponse.SerialNumber,
                     Status = (int)EndEntityStatus.GENERATED,
                     StatusMessage = statusMessage,
                     Certificate = signResponse?.Certificate,
                 };
 
-                logger.LogTrace($"success!  returning enrollmentresult: {JsonSerializer.Serialize(enrollmentResult)}");
+                logger.LogTrace($"returning enrollmentresult: {JsonSerializer.Serialize(enrollmentResult)}");
                 return enrollmentResult;
             }
             catch (Exception ex)
@@ -161,22 +143,22 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 		public async Task<AnyCAPluginCertificate> GetSingleRecord(string caRequestID)
         {
             logger.MethodEntry();
-
-            logger.LogTrace($"converting caRequestId {caRequestID} into a Vault style certificate serial number");
-            var formattedSerial = GetSerialFromTrackingId(caRequestID);
-            logger.LogTrace($"converted serial number: {formattedSerial}");
-
+            logger.LogTrace($"preparing to send request to retrieve certificate with id {caRequestID}");
             try
             {
-                var cert = await _client.GetCertificate(formattedSerial);
+                var cert = await _client.GetCertificate(caRequestID);
+
+                logger.LogTrace($"got a response from the request..");
+                logger.LogTrace($"revocation time: {cert.RevocationTime}");
+
                 var revoked = cert.RevocationTime != null;
+
                 var result = new AnyCAPluginCertificate
                 {
                     CARequestID = caRequestID,
                     Certificate = cert.Certificate,
                     Status = revoked ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
                     RevocationDate = cert.RevocationTime
-                    // ProductID = vaultRole // this is not avialable after issuance                                       
                 };
 
                 return result;
@@ -186,6 +168,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError($"There was an error retrieving the certificate: {ex.Message}");
                 throw;
             }
+            finally { logger.MethodExit(); }
         }
 
         /// <summary>
@@ -204,6 +187,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError($"Ping attempt failed with error: {ex.Message}");
                 throw;
             }
+            finally { logger.MethodExit(); }
         }
 
         /// <summary>
@@ -212,14 +196,15 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// <param name="caRequestID">The CA request ID.</param>
         /// <param name="hexSerialNumber">The hex-encoded serial number.</param>
         /// <param name="revocationReason">The revocation reason.</param>
-        /// <returns></returns>
+        /// <returns>The status of the request as an int representing EndEntityStatus</returns>
         public async Task<int> Revoke(string caRequestID, string hexSerialNumber, uint revocationReason)
         {
             logger.MethodEntry();
+            logger.LogTrace($"Sending request to revoke certificate with id: {caRequestID}");
             try
             {
-                var serial = GetSerialFromTrackingId(caRequestID);
-                await _client.RevokeCertificate(serial);
+                var response = await _client.RevokeCertificate(caRequestID);
+                logger.LogTrace($"returning 'REVOKED' EndEntityStatus ({(int)EndEntityStatus.REVOKED})");
                 return (int)EndEntityStatus.REVOKED;
             }
             catch (Exception ex)
@@ -227,10 +212,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError($"revocation failed with error: {ex.Message}");
                 throw;
             }
-            finally
-            {
-                logger.MethodExit();
-            }
+            finally { logger.MethodExit(); }
         }
 
         /// <summary>
@@ -243,11 +225,14 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         public async Task Synchronize(BlockingCollection<AnyCAPluginCertificate> blockingBuffer, DateTime? lastSync, bool fullSync, CancellationToken cancelToken)
         {
             // !! Any certificates issued outside of this CA Gateway will not necessarily be associated with the role name / (product ID) that was used to generate it
-            // !! since that value is not available after the initial generation.
+            // !! since that value is not retreivable after the initial generation.
 
             logger.MethodEntry();
+            logger.LogTrace("Beginning Synchronization Task..");
+
             var certSerials = new List<string>();
             var count = 0;
+
             try
             {
                 logger.LogTrace("getting all certificate serial numbers from vault");
@@ -265,44 +250,50 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             {
                 CertResponse certFromVault = null;
                 var dbStatus = -1;
+
+                // first, retreive the details from Vault
                 try
                 {
-                    logger.LogTrace("Getting cert details from vault");
+                    logger.LogTrace($"Calling GetCertificate on our client, passing serial number: {certSerial}");
                     certFromVault = await _client.GetCertificate(certSerial);
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError($"Failed to retreive details for certificate with serial number {certSerial} from Vault:  {LogHandler.FlattenException(ex)}");
+                    logger.LogError($"Failed to retreive details for certificate with serial number {certSerial} from Vault.  Errors: {LogHandler.FlattenException(ex)}");
                     throw;
                 }
                 logger.LogTrace($"converting {certSerial} to database trackingId");
-                var trackingId = GetTrackingIdFromSerial(certSerial);
-                logger.LogTrace($"attempting to retreive status of cert with tracking id {trackingId} from the database");
 
+                var trackingId = certSerial.Replace(":", "-"); // we store with '-'; hashi stores with ':'
+
+                // then, check for an existing local entry
                 try
                 {
+                    logger.LogTrace($"attempting to retreive status of cert with tracking id {trackingId} from the database");
                     dbStatus = await _certificateDataReader.GetStatusByRequestID(trackingId);
                 }
                 catch
                 {
                     logger.LogTrace($"tracking id {trackingId} was not found in the database.  it will be added.");
-                } // not found; keeps dbStatus == -1
+                }
 
                 if (dbStatus == -1 || fullSync) // it's missing and needs added, or a full sync is requested
                 {
-                    logger.LogTrace($"adding cert with serial {certSerial} to the database.  fullsync is {fullSync}");
+                    logger.LogTrace($"adding cert with serial {trackingId} to the database.  fullsync is {fullSync}, and the certificate {(dbStatus == -1 ? "does not yet exist" : "already exists")} in the database.");
 
                     var newCert = new AnyCAPluginCertificate
                     {
                         CARequestID = trackingId,
                         Certificate = certFromVault.Certificate,
                         Status = certFromVault.RevocationTime != null ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
-                        RevocationDate = certFromVault.RevocationTime ?? null,
+                        RevocationDate = certFromVault.RevocationTime,
                     };
 
                     try
                     {
+                        logger.LogTrace($"writing the result.");
                         blockingBuffer.Add(newCert);
+                        logger.LogTrace($"successfully added certificate to the database.");
                     }
                     catch (Exception ex)
                     {
@@ -313,15 +304,14 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 else // the cert exists in the database; just update the status if necessary
                 {
                     var revoked = certFromVault.RevocationTime != null;
-
-                    if (revoked && dbStatus != (int)EndEntityStatus.REVOKED)
+                    var vaultStatus = revoked ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED;
+                    if (vaultStatus != dbStatus) // if there is a mismatch, we need to update
                     {
-                        // need to update the db status to reflect that it has been revoked.
                         var newCert = new AnyCAPluginCertificate
                         {
                             CARequestID = trackingId,
                             Certificate = certFromVault.Certificate,
-                            Status = (int)EndEntityStatus.REVOKED,
+                            Status = vaultStatus,
                             RevocationDate = certFromVault.RevocationTime
                             // ProductID is not available via the API after the initial issuance.  we do not want to overwrite                            
                         };
@@ -341,6 +331,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         {
             logger.MethodEntry();
 
+            // first, we check to see if the CA Gateway is enabled in the configuration
             if (!(bool)connectionInfo[Constants.CAConfig.ENABLED])
             {
                 logger.LogWarning($"The CA is currently in the Disabled state. It must be Enabled to perform operations. Skipping validation...");
@@ -349,7 +340,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
             List<string> errors = new List<string>();
 
-            // make sure required fields are defined..
+            // then, we make sure required fields are defined..
             if (string.IsNullOrEmpty(connectionInfo[Constants.CAConfig.HOST] as string))
             {
                 errors.Add($"The '{Constants.CAConfig.HOST}' is required.");
@@ -376,32 +367,45 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             // if any errors, throw
             if (errors.Any())
             {
-                throw new AnyCAValidationException(string.Join("\n", errors));
+                var allErrors = string.Join("\n", errors);
+                logger.LogError($"validation failed with errors: {allErrors}");
+                throw new AnyCAValidationException(allErrors);
             }
 
-            // test the connection
+            // all required fields are present, now let's test the connection
             HashicorpVaultCAConfig config = null;
             try
             {
+                // converting the dictionary of values to our HashicorpVaultCAConfig POCO
+
+                logger.LogTrace("serializing the Dictionary<string, string> connection info into a JSON string");
+
                 var serializedConfig = JsonSerializer.Serialize(connectionInfo);
 
-                logger.LogTrace($"deserializing the configuration values into the HashicorpVaultCAConfig object: {serializedConfig}");
+                logger.LogTrace($"deserializing the JSON string into a HashicorpVaultCAConfig object: {serializedConfig}");
 
                 config = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(JsonSerializer.Serialize(connectionInfo));
+
+                logger.LogTrace("successfully deserialized the configuration values.");
             }
             catch (Exception ex)
             {
-                logger.LogError($"There was an error deserializing the configuration values.  {ex.Message}");
+                logger.LogError($"There was an error deserializing the configuration values.  {LogHandler.FlattenException(ex)}");
+                throw;
             }
 
             logger.LogTrace("initializing the Vault client with the configuration parameters.");
+
+            // create an instance of our client with those values
+
             _client = new HashicorpVaultClient(config);
 
+            // attempt an authenticated request to retreive role names
             try
             {
                 logger.LogTrace("making an authenticated request to the Vault server to verify credentials (listing role names)..");
                 var roleNames = await _client.GetRoleNamesAsync();
-                logger.LogTrace($"success: received wrappedResponse containing {roleNames.Count()} role names");
+                logger.LogTrace($"successfule request: received a response containing {roleNames.Count} role names");
             }
             catch (Exception ex)
             {
@@ -436,7 +440,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError(LogHandler.FlattenException(ex));
                 throw;
             }
-
+            // make sure Role Name is present in the template config
             if (string.IsNullOrEmpty(productInfo.ProductParameters[Constants.TemplateConfig.ROLENAME] as string))
             {
                 errors.Add($"The '{Constants.TemplateConfig.ROLENAME}' is required.");
@@ -445,9 +449,11 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             // if any errors, throw
             if (errors.Any())
             {
-                throw new AnyCAValidationException(string.Join("\n", errors));
+                var allErrors = string.Join("\n", errors);
+                logger.LogError($"Template config validation failed; errors: {allErrors}");
+                throw new AnyCAValidationException(allErrors);
             }
-
+            logger.MethodExit();
             return Task.CompletedTask;
         }
 
@@ -457,6 +463,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// <returns></returns>
         public Dictionary<string, PropertyConfigInfo> GetCAConnectorAnnotations()
         {
+            logger.MethodEntry();
+
             return new Dictionary<string, PropertyConfigInfo>()
             {
                 [Constants.CAConfig.HOST] = new PropertyConfigInfo()
@@ -487,13 +495,13 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     DefaultValue = string.Empty,
                     Type = "String"
                 },
-                [Constants.CAConfig.CLIENTCERT] = new PropertyConfigInfo()
-                {
-                    Comments = "The client certificate information used to authenticate with Vault (if configured to use certificate authentication). This can be either a Windows cert store name and location (e.g. 'My' and 'LocalMachine' for the Local Computer personal cert store) and thumbprint, or a PFX file and password.",
-                    Hidden = false,
-                    DefaultValue = string.Empty,
-                    Type = "ClientCertificate"
-                },
+                //[Constants.CAConfig.CLIENTCERT] = new PropertyConfigInfo()
+                //{
+                //    Comments = "The client certificate information used to authenticate with Vault (if configured to use certificate authentication). This can be either a Windows cert store name and location (e.g. 'My' and 'LocalMachine' for the Local Computer personal cert store) and thumbprint, or a PFX file and password.",
+                //    Hidden = false,
+                //    DefaultValue = string.Empty,
+                //    Type = "ClientCertificate"
+                //},
                 [Constants.CAConfig.ENABLED] = new PropertyConfigInfo()
                 {
                     Comments = "Flag to Enable or Disable gateway functionality. Disabling is primarily used to allow creation of the CA prior to configuration information being available.",
@@ -510,6 +518,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// <returns></returns>
         public Dictionary<string, PropertyConfigInfo> GetTemplateParameterAnnotations()
         {
+            logger.MethodEntry();
             return new Dictionary<string, PropertyConfigInfo>()
             {
                 [Constants.TemplateConfig.ROLENAME] = new PropertyConfigInfo()
@@ -525,7 +534,14 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     Hidden = false,
                     DefaultValue = string.Empty,
                     Type = "String"
-                }
+                },
+                [Constants.CAConfig.MOUNTPOINT] = new PropertyConfigInfo()
+                {
+                    Comments = "The mount point of the PKI secrets engine; if empty, will use value from the Connector configuration.",
+                    Hidden = false,
+                    DefaultValue = string.Empty,
+                    Type = "String"
+                },
             };
         }
 
@@ -540,8 +556,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             // Initialize should have been called in order to populate the caConfig and create the client.
             try
             {
+                logger.LogTrace("requesting role names from vault..");
                 var roleNames = _client.GetRoleNamesAsync().Result;
-                logger.LogTrace("got role names from vault: ");
+                logger.LogTrace($"got {roleNames.Count} role names from vault:");
                 foreach (var name in roleNames)
                 {
                     logger.LogTrace(name);
@@ -571,18 +588,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             {
                 throw new Exception($"The request is missing a {rdn} value");
             }
-        }
-        private static string GetSerialFromTrackingId(string trackingId)
-        {
-            // to convert to a vault certificate serial number, we need to split into 2 characters and rejoin with ":" between each.            
-            var serialParts = trackingId.Chunk(2).ToList();
-            return String.Join(":", serialParts);
-        }
-        private static string GetTrackingIdFromSerial(string serialNumber)
-        {
-            // vault certificate serial numbers are formatted like this: 17:67:16:b0:b9:45:58:c0:3a:29:e3:cb:d6:98:33:7a:a6:3b:66:c1
-            // we simply remove the ":"'s to convert to tracking ID
-            return serialNumber.Replace(":", "");
         }
 
         #endregion Helper Methods

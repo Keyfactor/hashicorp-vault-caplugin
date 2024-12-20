@@ -24,7 +24,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
         [JsonPropertyName("ca_chain")]
         public List<string> CAChain { get; set; }
 
+        private string _vaultSerial { get; set; }
         [JsonPropertyName("serial_number")]
-        public string SerialNumber { get; set; }
+        public string SerialNumber // replacing ":" with "-" since they work interchangeably in Vault, and we cannot use ":" in our tracking ids.
+        {
+            get { return _vaultSerial.Replace(":", "-"); }
+            set { _vaultSerial = value; }
+        }
     }
 }
