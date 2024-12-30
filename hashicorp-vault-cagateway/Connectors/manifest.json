@@ -1,0 +1,10 @@
+{
+  "extensions": {
+    "Keyfactor.AnyGateway.Extensions.IAnyCAPlugin": {
+      "HashicorpVaultCAPlugin": {
+        "assemblypath": "../HashicorpVaultCAPlugin.dll",
+        "TypeFullName": "Keyfactor.Extensions.CAPlugin.HashicorpVault.HashicorpVaultCAConnector"
+      }
+    }
+  }
+}
