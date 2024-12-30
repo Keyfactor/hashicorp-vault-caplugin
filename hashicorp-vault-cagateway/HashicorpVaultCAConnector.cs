@@ -76,7 +76,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             try
             {
-
                 logger.LogTrace("getting product info");
                 var serializedProductInfo = JsonSerializer.Serialize(productInfo.ProductParameters);
                 logger.LogTrace($"got product info: {serializedProductInfo}");
@@ -521,13 +520,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.MethodEntry();
             return new Dictionary<string, PropertyConfigInfo>()
             {
-                [Constants.TemplateConfig.ROLENAME] = new PropertyConfigInfo()
-                {
-                    Comments = "REQUIRED: Vault PKI Role Name corresponding to this template.",
-                    Hidden = false,
-                    DefaultValue = "PKI Secrets Engine Role Name",
-                    Type = "String"
-                },
                 [Constants.TemplateConfig.NAMESPACE] = new PropertyConfigInfo()
                 {
                     Comments = "OPTIONAL: The namespace of the path to the PKI engine (Vault Enterprise); use only if different than the Namespace set in the Connector configuration",
