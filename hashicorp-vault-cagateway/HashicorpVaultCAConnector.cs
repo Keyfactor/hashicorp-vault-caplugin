@@ -482,14 +482,14 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 },
                 [Constants.CAConfig.MOUNTPOINT] = new PropertyConfigInfo()
                 {
-                    Comments = "The mount point of the PKI secrets engine.",
+                    Comments = "The mount point of the PKI secrets engine",
                     Hidden = false,
                     DefaultValue = "pki",
                     Type = "String"
                 },
                 [Constants.CAConfig.TOKEN] = new PropertyConfigInfo()
                 {
-                    Comments = "The default authentication token to use when authenticating into Vault if no value is set in the Template configuration.  If present, this will be used instead of Client Cert for authenticating into Vault.",
+                    Comments = "The authentication token to use when authenticating into Vault",
                     Hidden = true,
                     DefaultValue = string.Empty,
                     Type = "String"
@@ -503,7 +503,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 //},
                 [Constants.CAConfig.ENABLED] = new PropertyConfigInfo()
                 {
-                    Comments = "Flag to Enable or Disable gateway functionality. Disabling is primarily used to allow creation of the CA prior to configuration information being available.",
+                    Comments = "Flag to Enable or Disable gateway functionality. Disabling is primarily used to allow creation of the CA prior to configuration information being available",
                     Hidden = false,
                     DefaultValue = true,
                     Type = "Boolean"
