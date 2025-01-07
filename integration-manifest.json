@@ -4,9 +4,46 @@
   "name": "Hashicorp Vault AnyCA REST Gateway Plugin",
   "status": "prototype",
   "support_level": "community",
-  "link_github": false,
+  "link_github": true,
   "update_catalog": false,
-  "description": "Hashicorp Vault PKI Secrets Engine integration using AnyCA REST Gateway framework",
+  "description": "Hashicorp Vault plugin for the AnyCA REST Gateway Framework",
   "gateway_framework": "24.2.0",
-   "release_dir": "UPDATE-THIS-WITH-PATH-TO-BINARY-BUILD-FOLDER"
+  "release_dir": "hashicorp-vault-cagateway/bin/Release",
+  "about": {
+    "carest": {
+      "product_ids": [],
+      "ca_plugin_config": [
+        {
+          "name": "Host",
+          "description": "REQUIRED: The host URI of the Hashicorp Vault server relative to this gateway host"
+        },
+        {
+          "name": "MountPoint",
+          "description": "REQUIRED: The mount point of the PKI secrets engine.  This will only be used if there is no value for MountPoint in the template parameters."
+        },
+        {
+          "name": "Namespace",
+          "description": "OPTIONAL: Default namespace to use in the path to the Vault PKI secrets engine (Vault Enterprise only).  This will only be used if there is no value for Namespace in the Template parameters."
+        },
+        {
+          "name": "Token",
+          "description": "REQUIRED: The authentication token to use when authenticating into Vault"
+        },
+        {
+          "name": "Enabled",
+          "description": "Flag to Enable or Disable gateway functionality. Disabling is primarily used to allow creation of the CA prior to configuration information being available"
+        }
+      ],
+      "enrollment_config": [
+        {
+          "name": "MountPoint",
+          "description": "OPTIONAL: The mount point of the PKI secrets engine.  If provided, will override values set in the CA configuration for enrollment operations."
+        },
+        {
+          "name": "Namespace",
+          "description": "OPTIONAL: Default namespace to use in the path to the Vault PKI secrets engine (Vault Enterprise only).  If provided, will override values set in the CA configuration for enrollment operations."
+        }
+      ]
+    }
+  }
 }

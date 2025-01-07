@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "hashicorp-vault-caplugin": {
+      "commandName": "Project",
+      "remoteDebugEnabled": true,
+      "authenticationMode": "None",
+      "nativeDebugging": true
+    }
+  }
+}
