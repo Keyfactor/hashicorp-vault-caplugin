@@ -352,18 +352,22 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             // make sure an authentication mechanism is defined (either certificate or token)
             var token = connectionInfo[Constants.CAConfig.TOKEN] as string;
-            var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
+            
+            /// REMOVING CERT VALIDATION UNTIL CLIENT CERT AUTH IS IMPLEMENTED
+            
+            //var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
 
-            if (string.IsNullOrEmpty(token) && string.IsNullOrEmpty(cert))
-            {
-                errors.Add("Either an authentication token or client certificate must be defined for authentication into Vault.");
-            }
-            if (!string.IsNullOrEmpty(token) && !string.IsNullOrEmpty(cert))
-            {
-                logger.LogWarning("Both an authentication token and client certificate are defined.  Using the token for authentication.");
-            }
+            //if (string.IsNullOrEmpty(token) && string.IsNullOrEmpty(cert))
+            //{
+            //    errors.Add("Either an authentication token or client certificate must be defined for authentication into Vault.");
+            //}
+            //if (!string.IsNullOrEmpty(token) && !string.IsNullOrEmpty(cert))
+            //{
+            //    logger.LogWarning("Both an authentication token and client certificate are defined.  Using the token for authentication.");
+            //}
 
             // if any errors, throw
+
             if (errors.Any())
             {
                 var allErrors = string.Join("\n", errors);
