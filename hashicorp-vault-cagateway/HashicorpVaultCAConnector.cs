@@ -352,18 +352,22 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             // make sure an authentication mechanism is defined (either certificate or token)
             var token = connectionInfo[Constants.CAConfig.TOKEN] as string;
-            var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
 
-            if (string.IsNullOrEmpty(token) && string.IsNullOrEmpty(cert))
-            {
-                errors.Add("Either an authentication token or client certificate must be defined for authentication into Vault.");
-            }
-            if (!string.IsNullOrEmpty(token) && !string.IsNullOrEmpty(cert))
-            {
-                logger.LogWarning("Both an authentication token and client certificate are defined.  Using the token for authentication.");
-            }
+            /// REMOVING CERT VALIDATION UNTIL CLIENT CERT AUTH IS IMPLEMENTED
+
+            //var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
+
+            //if (string.IsNullOrEmpty(token) && string.IsNullOrEmpty(cert))
+            //{
+            //    errors.Add("Either an authentication token or client certificate must be defined for authentication into Vault.");
+            //}
+            //if (!string.IsNullOrEmpty(token) && !string.IsNullOrEmpty(cert))
+            //{
+            //    logger.LogWarning("Both an authentication token and client certificate are defined.  Using the token for authentication.");
+            //}
 
             // if any errors, throw
+
             if (errors.Any())
             {
                 var allErrors = string.Join("\n", errors);
@@ -439,10 +443,15 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError(LogHandler.FlattenException(ex));
                 throw;
             }
-            // make sure Role Name is present in the template config
-            if (string.IsNullOrEmpty(productInfo.ProductParameters[Constants.TemplateConfig.ROLENAME] as string))
+            // make sure product ID is a valid RoleName
+            if (string.IsNullOrEmpty(productInfo.ProductID))
             {
-                errors.Add($"The '{Constants.TemplateConfig.ROLENAME}' is required.");
+                errors.Add($"The productID is required.");
+            }
+
+            if (!ProductIdIsValid(productInfo.ProductID, caConfig).Result)
+            {
+                errors.Add($"The productID {productInfo.ProductID} does not match any of the role names defined in Vault.");
             }
 
             // if any errors, throw
@@ -454,6 +463,27 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
             logger.MethodExit();
             return Task.CompletedTask;
+        }
+
+        private async Task<bool> ProductIdIsValid(string productID, HashicorpVaultCAConfig config)
+        {
+
+            _client = new HashicorpVaultClient(config);
+
+            // attempt an authenticated request to retreive role names
+            try
+            {
+                logger.LogTrace("making an authenticated request to the Vault server to verify credentials (listing role names)..");
+                var roleNames = await _client.GetRoleNamesAsync();
+                logger.LogTrace($"successfule request: received a response containing {roleNames.Count} role names");
+                return roleNames.Any(rn => rn == productID);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Authenticated request failed.  {ex.Message}");
+                throw;
+            }
+            finally { logger.MethodExit(); }
         }
 
         /// <summary>
