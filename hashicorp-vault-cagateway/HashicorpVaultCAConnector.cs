@@ -70,6 +70,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         public async Task<EnrollmentResult> Enroll(string csr, string subject, Dictionary<string, string[]> san, EnrollmentProductInfo productInfo, RequestFormat requestFormat, EnrollmentType enrollmentType)
         {
             logger.MethodEntry(LogLevel.Trace);
+
+            _client = new HashicorpVaultClient(_caConfig);
+
             logger.LogInformation($"Begin {enrollmentType} enrollment for {subject}");
             string statusMessage;
             SignResponse signResponse;
@@ -142,6 +145,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 		public async Task<AnyCAPluginCertificate> GetSingleRecord(string caRequestID)
         {
             logger.MethodEntry();
+
+            _client = new HashicorpVaultClient(_caConfig);
+
             logger.LogTrace($"preparing to send request to retrieve certificate with id {caRequestID}");
             try
             {
@@ -176,6 +182,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         public async Task Ping()
         {
             logger.MethodEntry();
+            _client = new HashicorpVaultClient(_caConfig);
             logger.LogTrace("Attempting ping of Vault endpoint");
             try
             {
@@ -198,6 +205,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// <returns>The status of the request as an int representing EndEntityStatus</returns>
         public async Task<int> Revoke(string caRequestID, string hexSerialNumber, uint revocationReason)
         {
+            _client = new HashicorpVaultClient(_caConfig);
             logger.MethodEntry();
             logger.LogTrace($"Sending request to revoke certificate with id: {caRequestID}");
             try
@@ -223,6 +231,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// <param name="cancelToken">The cancellation token.</param>
         public async Task Synchronize(BlockingCollection<AnyCAPluginCertificate> blockingBuffer, DateTime? lastSync, bool fullSync, CancellationToken cancelToken)
         {
+            _client = new HashicorpVaultClient(_caConfig);
             // !! Any certificates issued outside of this CA Gateway will not necessarily be associated with the role name / (product ID) that was used to generate it
             // !! since that value is not retreivable after the initial generation.
 
@@ -247,6 +256,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             foreach (var certSerial in certSerials)
             {
+                cancelToken.ThrowIfCancellationRequested();
                 CertResponse certFromVault = null;
                 var dbStatus = -1;
 
@@ -467,7 +477,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
         private async Task<bool> ProductIdIsValid(string productID, HashicorpVaultCAConfig config)
         {
-
             _client = new HashicorpVaultClient(config);
 
             // attempt an authenticated request to retreive role names
