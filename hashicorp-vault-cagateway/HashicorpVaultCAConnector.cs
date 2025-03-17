@@ -240,6 +240,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             var certSerials = new List<string>();
             var count = 0;
+            var changedCount = 0;
 
             try
             {
@@ -281,15 +282,16 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     logger.LogTrace($"attempting to retreive status of cert with tracking id {trackingId} from the database");
                     dbStatus = await _certificateDataReader.GetStatusByRequestID(trackingId);
                 }
-                catch
+                catch(Exception ex)
                 {
+                    logger.LogTrace($"exception when retrieving cert from DB.  It could simply be missing, but logging for analysis: {ex.Message}");
                     logger.LogTrace($"tracking id {trackingId} was not found in the database.  it will be added.");
                 }
 
                 if (dbStatus == -1 || fullSync) // it's missing and needs added, or a full sync is requested
                 {
                     logger.LogTrace($"adding cert with serial {trackingId} to the database.  fullsync is {fullSync}, and the certificate {(dbStatus == -1 ? "does not yet exist" : "already exists")} in the database.");
-
+                    changedCount++;
                     var newCert = new AnyCAPluginCertificate
                     {
                         CARequestID = trackingId,
@@ -312,10 +314,13 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 }
                 else // the cert exists in the database; just update the status if necessary
                 {
+                    logger.LogTrace($"certificate with id {trackingId} was found in the database, comparing status.");
                     var revoked = certFromVault.RevocationTime != null;
                     var vaultStatus = revoked ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED;
                     if (vaultStatus != dbStatus) // if there is a mismatch, we need to update
                     {
+                        changedCount++;
+                        logger.LogTrace($"status in vault is {vaultStatus}, status in db is {dbStatus}; updating db.");
                         var newCert = new AnyCAPluginCertificate
                         {
                             CARequestID = trackingId,
@@ -325,10 +330,13 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                             // ProductID is not available via the API after the initial issuance.  we do not want to overwrite                            
                         };
                     }
+                    else {
+                        logger.LogTrace($"The status is unchanged and we are doing an incremental scan; no need to update db.");
+                    }
                 }
                 count++;
             }
-            logger.LogTrace($"Completed sync of {count} certificates");
+            logger.LogTrace($"Completed sync of {count} certificates.  It was {(fullSync ? "a full" : "an incremental")} sync and {changedCount} records were updated.");
             logger.MethodExit();
         }
 
