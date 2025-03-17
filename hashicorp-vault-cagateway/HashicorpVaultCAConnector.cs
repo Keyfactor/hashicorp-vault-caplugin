@@ -54,12 +54,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             _caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(rawConfig);
             logger.MethodExit(LogLevel.Trace);
             _client = new HashicorpVaultClient(_caConfig);
+            _certificateDataReader = certificateDataReader;
         }
 
         /// <summary>
         /// Enrolls for a certificate through the API.
         /// </summary>
-        /// <param name="certificateDataReader">Reads certificate data from the database.</param>
         /// <param name="csr">The certificate request CSR in PEM format.</param>
         /// <param name="subject">The subject of the certificate request.</param>
         /// <param name="san">Any SANs added to the request.</param>
