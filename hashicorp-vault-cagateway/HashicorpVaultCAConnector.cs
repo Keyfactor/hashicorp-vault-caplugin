@@ -54,12 +54,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             _caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(rawConfig);
             logger.MethodExit(LogLevel.Trace);
             _client = new HashicorpVaultClient(_caConfig);
+            _certificateDataReader = certificateDataReader;
         }
 
         /// <summary>
         /// Enrolls for a certificate through the API.
         /// </summary>
-        /// <param name="certificateDataReader">Reads certificate data from the database.</param>
         /// <param name="csr">The certificate request CSR in PEM format.</param>
         /// <param name="subject">The subject of the certificate request.</param>
         /// <param name="san">Any SANs added to the request.</param>
@@ -70,6 +70,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         public async Task<EnrollmentResult> Enroll(string csr, string subject, Dictionary<string, string[]> san, EnrollmentProductInfo productInfo, RequestFormat requestFormat, EnrollmentType enrollmentType)
         {
             logger.MethodEntry(LogLevel.Trace);
+
+            _client = new HashicorpVaultClient(_caConfig);
+
             logger.LogInformation($"Begin {enrollmentType} enrollment for {subject}");
             string statusMessage;
             SignResponse signResponse;
@@ -142,6 +145,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 		public async Task<AnyCAPluginCertificate> GetSingleRecord(string caRequestID)
         {
             logger.MethodEntry();
+
+            _client = new HashicorpVaultClient(_caConfig);
+
             logger.LogTrace($"preparing to send request to retrieve certificate with id {caRequestID}");
             try
             {
@@ -176,6 +182,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         public async Task Ping()
         {
             logger.MethodEntry();
+            _client = new HashicorpVaultClient(_caConfig);
             logger.LogTrace("Attempting ping of Vault endpoint");
             try
             {
@@ -198,6 +205,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// <returns>The status of the request as an int representing EndEntityStatus</returns>
         public async Task<int> Revoke(string caRequestID, string hexSerialNumber, uint revocationReason)
         {
+            _client = new HashicorpVaultClient(_caConfig);
             logger.MethodEntry();
             logger.LogTrace($"Sending request to revoke certificate with id: {caRequestID}");
             try
@@ -223,6 +231,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// <param name="cancelToken">The cancellation token.</param>
         public async Task Synchronize(BlockingCollection<AnyCAPluginCertificate> blockingBuffer, DateTime? lastSync, bool fullSync, CancellationToken cancelToken)
         {
+            _client = new HashicorpVaultClient(_caConfig);
             // !! Any certificates issued outside of this CA Gateway will not necessarily be associated with the role name / (product ID) that was used to generate it
             // !! since that value is not retreivable after the initial generation.
 
@@ -247,6 +256,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             foreach (var certSerial in certSerials)
             {
+                cancelToken.ThrowIfCancellationRequested();
                 CertResponse certFromVault = null;
                 var dbStatus = -1;
 
@@ -352,18 +362,22 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             // make sure an authentication mechanism is defined (either certificate or token)
             var token = connectionInfo[Constants.CAConfig.TOKEN] as string;
-            var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
 
-            if (string.IsNullOrEmpty(token) && string.IsNullOrEmpty(cert))
-            {
-                errors.Add("Either an authentication token or client certificate must be defined for authentication into Vault.");
-            }
-            if (!string.IsNullOrEmpty(token) && !string.IsNullOrEmpty(cert))
-            {
-                logger.LogWarning("Both an authentication token and client certificate are defined.  Using the token for authentication.");
-            }
+            /// REMOVING CERT VALIDATION UNTIL CLIENT CERT AUTH IS IMPLEMENTED
+
+            //var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
+
+            //if (string.IsNullOrEmpty(token) && string.IsNullOrEmpty(cert))
+            //{
+            //    errors.Add("Either an authentication token or client certificate must be defined for authentication into Vault.");
+            //}
+            //if (!string.IsNullOrEmpty(token) && !string.IsNullOrEmpty(cert))
+            //{
+            //    logger.LogWarning("Both an authentication token and client certificate are defined.  Using the token for authentication.");
+            //}
 
             // if any errors, throw
+
             if (errors.Any())
             {
                 var allErrors = string.Join("\n", errors);
@@ -439,10 +453,15 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError(LogHandler.FlattenException(ex));
                 throw;
             }
-            // make sure Role Name is present in the template config
-            if (string.IsNullOrEmpty(productInfo.ProductParameters[Constants.TemplateConfig.ROLENAME] as string))
+            // make sure product ID is a valid RoleName
+            if (string.IsNullOrEmpty(productInfo.ProductID))
             {
-                errors.Add($"The '{Constants.TemplateConfig.ROLENAME}' is required.");
+                errors.Add($"The productID is required.");
+            }
+
+            if (!ProductIdIsValid(productInfo.ProductID, caConfig).Result)
+            {
+                errors.Add($"The productID {productInfo.ProductID} does not match any of the role names defined in Vault.");
             }
 
             // if any errors, throw
@@ -454,6 +473,26 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
             logger.MethodExit();
             return Task.CompletedTask;
+        }
+
+        private async Task<bool> ProductIdIsValid(string productID, HashicorpVaultCAConfig config)
+        {
+            _client = new HashicorpVaultClient(config);
+
+            // attempt an authenticated request to retreive role names
+            try
+            {
+                logger.LogTrace("making an authenticated request to the Vault server to verify credentials (listing role names)..");
+                var roleNames = await _client.GetRoleNamesAsync();
+                logger.LogTrace($"successfule request: received a response containing {roleNames.Count} role names");
+                return roleNames.Any(rn => rn == productID);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"Authenticated request failed.  {ex.Message}");
+                throw;
+            }
+            finally { logger.MethodExit(); }
         }
 
         /// <summary>
