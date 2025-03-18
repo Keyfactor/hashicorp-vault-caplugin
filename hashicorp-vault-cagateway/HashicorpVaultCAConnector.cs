@@ -248,6 +248,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             catch (Exception ex)
             {
                 logger.LogError($"failed to retreive serial numbers: {LogHandler.FlattenException(ex)}");
+                blockingBuffer.CompleteAdding();
                 throw;
             }
 
@@ -268,6 +269,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 catch (Exception ex)
                 {
                     logger.LogError($"Failed to retreive details for certificate with serial number {certSerial} from Vault.  Errors: {LogHandler.FlattenException(ex)}");
+                    blockingBuffer.CompleteAdding();
                     throw;
                 }
                 logger.LogTrace($"converting {certSerial} to database trackingId");
@@ -284,6 +286,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 {   
                     if (!ex.Message.Contains("No matching")) { // if the exception message doesn't contain this; something else happened.
                         logger.LogTrace($"exception when retrieving cert from database: {ex.Message}");
+                        blockingBuffer.CompleteAdding();
                         throw;
                     }
                     logger.LogTrace($"tracking id {trackingId} was not found in the database.  it will be added.");
@@ -304,13 +307,19 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     try
                     {
                         logger.LogTrace($"writing the result.");
-                        blockingBuffer.Add(newCert);
-                        logger.LogTrace($"successfully added certificate to the database.");
+                        if (blockingBuffer.TryAdd(newCert, 50, cancelToken))
+                        {
+                            logger.LogTrace($"successfully added certificate to the database.");
+                        }
+                        else {
+                            logger.LogTrace($"adding to queue for writing was blocked.");
+                        }                        
                     }
                     catch (Exception ex)
                     {
                         logger.LogError($"Failed to add the cert to the database: {LogHandler.FlattenException(ex)}");
-                        throw;
+                        blockingBuffer.CompleteAdding();
+                        break;
                     }
                 }
                 else // the cert exists in the database; just update the status if necessary
@@ -330,6 +339,14 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                             RevocationDate = certFromVault.RevocationTime
                             // ProductID is not available via the API after the initial issuance.  we do not want to overwrite                            
                         };
+                        if (blockingBuffer.TryAdd(newCert, 50, cancelToken))
+                        {
+                            logger.LogTrace($"successfully updated certificate {trackingId} in the database.");
+                        }
+                        else
+                        {
+                            logger.LogTrace($"adding to queue for writing was blocked.");
+                        }
                     }
                     else {
                         logger.LogTrace($"The status is unchanged and we are doing an incremental scan; no need to update db.");
@@ -337,6 +354,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 }
                 count++;
             }
+            blockingBuffer.CompleteAdding();
             logger.LogTrace($"Completed sync of {count} certificates.  It was {(fullSync ? "a full" : "an incremental")} sync and {changedCount} records were updated.");
             logger.MethodExit();
         }
