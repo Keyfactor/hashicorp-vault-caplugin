@@ -23,8 +23,28 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
     /// </summary>
     public class VaultHttp
     {
+        private string _vaultApiPath { get; set; }
         private string _mountPoint { get; set; }  // not all requests are the the secrets engine, so can't append this permanently to the base path
-        private RestClient _restClient { get; set; }
+        private string _authToken { get; set; }
+        private string _nameSpace { get; set; }
+        private RestClient _restClient;
+        protected RestClient restClient
+        {
+            get
+            {
+                if (_restClient != null) { return _restClient; }
+                var restClientOptions = new RestClientOptions(_vaultApiPath) { ThrowOnAnyError = true };
+                _restClient = new RestClient(restClientOptions, configureSerialization: s => s.UseSystemTextJson(_serializerOptions));
+                _restClient.AddDefaultHeader("X-Vault-Request", "true");
+                _restClient.AddDefaultHeader("X-Vault-Token", _authToken);
+                if (_nameSpace != null) _restClient.AddDefaultHeader("X-Vault-Namespace", _nameSpace);
+                logger.LogTrace($"configured a new instance of our Vault http client with the provided values:");
+                logger.LogTrace($"vault api path: {_vaultApiPath}");
+                logger.LogTrace($"mount point: {_mountPoint}");
+                logger.LogTrace($"namespace: {_nameSpace}");
+                return _restClient;
+            }
+        }
         private JsonSerializerOptions _serializerOptions { get; set; }
 
         private static readonly ILogger logger = LogHandler.GetClassLogger<VaultHttp>();
@@ -40,20 +60,16 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 PropertyNameCaseInsensitive = true,
                 PreferredObjectCreationHandling = JsonObjectCreationHandling.Replace,
             };
+            _vaultApiPath = $"{host.TrimEnd('/')}/v1";
+            _mountPoint = mountPoint.TrimStart('/').TrimEnd('/');
+            _authToken = authToken;
 
-            var restClientOptions = new RestClientOptions($"{host.TrimEnd('/')}/v1") { ThrowOnAnyError = true };
-            _restClient = new RestClient(restClientOptions, configureSerialization: s => s.UseSystemTextJson(_serializerOptions));
+            if (!string.IsNullOrEmpty(nameSpace))
+            {
+                _nameSpace = nameSpace;
+            }
 
-            _mountPoint = mountPoint.TrimStart('/').TrimEnd('/'); // remove leading and trailing slashes
-            _restClient.AddDefaultHeader("X-Vault-Request", "true");
-            _restClient.AddDefaultHeader("X-Vault-Token", authToken);
-
-            if (nameSpace != null) _restClient.AddDefaultHeader("X-Vault-Namespace", nameSpace);
-
-            logger.LogTrace($"configured an instance of our restsharp client with the provided values:");
-            logger.LogTrace($"host url: {host}");
-            logger.LogTrace($"mount point: {_mountPoint}");
-            logger.LogTrace($"namespace: {nameSpace}");
+            logger.LogTrace($"configured our httpclient wrapper with the following values:\nbase path: {_vaultApiPath}\nnamespace: {(!string.IsNullOrEmpty(_nameSpace) ? _nameSpace : "(no namespace configured)")}\nmount point: {_mountPoint}\nauth token: {_authToken.Substring(0, 8)}...");
 
             logger.MethodExit();
         }
@@ -89,6 +105,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
             }
             finally
             {
+                _restClient.Dispose();
+                _restClient = null;
                 logger.MethodExit();
             }
         }
@@ -119,7 +137,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 logger.LogTrace($"request completed. response returned:");
                 logger.LogTrace($"response.StatusCode: {response!.StatusCode}");
                 logger.LogTrace($"response.contentType: {response!.ContentType}");
-                
+
                 if (response.ErrorMessage != null) logger.LogTrace($"response.ErrorMessage: {response!.ErrorMessage}");
 
                 ErrorResponse errorResponse = null;
@@ -144,6 +162,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
             }
             finally
             {
+                _restClient.Dispose();
+                _restClient = null;
                 logger.MethodExit();
             }
         }
@@ -161,7 +181,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 logger.LogError($"there was an error making the request: {LogHandler.FlattenException(ex)}");
                 throw;
             }
-            finally { logger.MethodExit(); }
+            finally
+            {
+                _restClient.Dispose();
+                _restClient = null;
+                logger.MethodExit();
+            }
         }
 
         /// <summary>
@@ -183,7 +208,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 logger.LogError($"request to get capabilities for token failed: {LogHandler.FlattenException(ex)}");
                 throw;
             }
-            finally { logger.MethodExit(); }
+            finally
+            {
+                _restClient.Dispose();
+                _restClient = null;
+                logger.MethodExit();
+            }
         }
     }
 }
