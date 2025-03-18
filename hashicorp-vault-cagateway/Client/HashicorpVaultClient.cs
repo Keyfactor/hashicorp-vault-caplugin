@@ -25,15 +25,16 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
     /// </summary>
     public class HashicorpVaultClient
     {
-        private VaultHttp _vaultHttp { get; set; }
+        private HashicorpVaultCAConfig _caConfig { get; set; }
+        private HashicorpVaultCATemplateConfig _templateConfig { get; set; }
+
         private static readonly ILogger logger = LogHandler.GetClassLogger<HashicorpVaultClient>();
 
         public HashicorpVaultClient(HashicorpVaultCAConfig caConfig, HashicorpVaultCATemplateConfig templateConfig = null)
         {
             logger.MethodEntry();
-
-            SetClientValuesFromConfigs(caConfig, templateConfig);
-
+            _caConfig = caConfig;
+            _templateConfig = templateConfig;
             logger.MethodExit();
         }
 
@@ -101,6 +102,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     Format = "pem_bundle",
                     CSR = csr
                 };
+                var _vaultHttp = ConfigureNewVaultClient();
 
                 logger.LogTrace($"sending request to vault..");
                 logger.LogTrace($"serialized request: {JsonSerializer.Serialize(request)}");
@@ -131,6 +133,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             try
             {
+                var _vaultHttp = ConfigureNewVaultClient();
                 var response = await _vaultHttp.GetAsync<CertResponse>($"cert/{certSerial}");
                 logger.LogTrace($"successfully received a response for certificate with serial number: {certSerial}");
                 return response;
@@ -151,7 +154,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.MethodEntry();
             logger.LogTrace($"making request to revoke cert with serial: {serial}");
             try
-            {                
+            {
+                var _vaultHttp = ConfigureNewVaultClient();
                 var response = await _vaultHttp.PostAsync<RevokeResponse>("revoke", new RevokeRequest(serial));
                 logger.LogTrace($"successfully revoked cert with serial {serial}, revocation time:  {response.RevocationTime}");
                 return response;
@@ -170,6 +174,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.LogTrace($"performing a system health check request to Vault");
             try
             {
+                var _vaultHttp = ConfigureNewVaultClient();
                 var res = await _vaultHttp.HealthCheckAsync();
                 logger.LogTrace($"-- Vault health check response --");
                 logger.LogTrace($"Vault version : {res.VaultVersion}");
@@ -198,6 +203,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             var keys = new List<string>();
             try
             {
+                var _vaultHttp = ConfigureNewVaultClient();
                 var res = await _vaultHttp.GetAsync<WrappedResponse<KeyedList>>("certs/?list=true");
                 return res.Data.Entries;
             }
@@ -215,6 +221,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             var keys = new List<string>();
             try
             {
+                var _vaultHttp = ConfigureNewVaultClient();
                 var res = await _vaultHttp.GetAsync<KeyedList>("certs/revoked");
                 keys = res.Entries;
             }
@@ -233,6 +240,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             var roleNames = new List<string>();
             try
             {
+                var _vaultHttp = ConfigureNewVaultClient();
                 logger.LogTrace("getting the role names as a wrapped keyed-list response..");
                 var response = await _vaultHttp.GetAsync<WrappedResponse<KeyedList>>("roles/?list=true");
                 logger.LogTrace($"received {response.Data?.Entries?.Count} role names (or product IDs)");
@@ -246,14 +254,14 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             finally { logger.MethodExit(); }            
         }
 
-        private void SetClientValuesFromConfigs(HashicorpVaultCAConfig caConfig, HashicorpVaultCATemplateConfig templateConfig)
+        private VaultHttp ConfigureNewVaultClient()
         {
             logger.MethodEntry();
 
-            var hostUrl = caConfig.Host; // host url and authentication details come from the CA config
-            var token = caConfig.Token;
-            var nameSpace = string.IsNullOrEmpty(templateConfig?.Namespace) ? caConfig.Namespace : templateConfig.Namespace; // Namespace comes from templateconfig if available, otherwise defaults to caConfig; can be null
-            var mountPoint = string.IsNullOrEmpty(templateConfig?.MountPoint) ? caConfig.MountPoint : templateConfig.MountPoint; // Mountpoint comes from templateconfig if available, otherwise defaults to caConfig; if null, uses "pki" (Vault Default)
+            var hostUrl = _caConfig.Host; // host url and authentication details come from the CA config
+            var token = _caConfig.Token;
+            var nameSpace = string.IsNullOrEmpty(_templateConfig?.Namespace) ? _caConfig.Namespace : _templateConfig.Namespace; // Namespace comes from templateconfig if available, otherwise defaults to caConfig; can be null
+            var mountPoint = string.IsNullOrEmpty(_templateConfig?.MountPoint) ? _caConfig.MountPoint : _templateConfig.MountPoint; // Mountpoint comes from templateconfig if available, otherwise defaults to caConfig; if null, uses "pki" (Vault Default)
             mountPoint = mountPoint ?? "pki"; // using the vault default PKI secrets engine mount point if not present in config
 
             logger.LogTrace($"set value for Host url: {hostUrl}");
@@ -268,19 +276,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             //{
             //    throw new MissingFieldException("Either an authentication token or certificate to use for authentication into Vault must be provided.");
             //}
-
-            _vaultHttp = new VaultHttp(hostUrl, mountPoint, token, nameSpace);
-
             logger.MethodExit();
-        }
 
-        private static string ConvertSerialToTrackingId(string serialNumber)
-        {
-            // vault returns certificate serial formatted thusly: 17:67:16:b0:b9:45:58:c0:3a:29:e3:cb:d6:98:33:7a:a6:3b:66:c1
-            // we cannot use the ':' character as part of our internal tracking id, but Vault requests can work with either ':' or '-'
-            // so we convert from colon-separated pairs to hyphen separated pairs.
-
-            return serialNumber.Replace(":", "-");
+            return new VaultHttp(hostUrl, mountPoint, token, nameSpace);            
         }
     }
 }
