@@ -51,10 +51,10 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.MethodEntry(LogLevel.Trace);
             string rawConfig = JsonSerializer.Serialize(configProvider.CAConnectionData);
             logger.LogTrace($"serialized config: {rawConfig}");
-            _caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(rawConfig);
-            logger.MethodExit(LogLevel.Trace);
+            _caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(rawConfig);            
             //_client = new HashicorpVaultClient(_caConfig);
             _certificateDataReader = certificateDataReader;
+            logger.MethodExit(LogLevel.Trace);
         }
 
         /// <summary>
@@ -228,8 +228,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// <param name="certificateAuthoritySyncInfo">Information about the last CA sync.</param>
         /// <param name="cancelToken">The cancellation token.</param>
         public async Task Synchronize(BlockingCollection<AnyCAPluginCertificate> blockingBuffer, DateTime? lastSync, bool fullSync, CancellationToken cancelToken)
-        {
-            var hashiClient = new HashicorpVaultClient(_caConfig);
+        {            
             // !! Any certificates issued outside of this CA Gateway will not necessarily be associated with the role name / (product ID) that was used to generate it
             // !! since that value is not retreivable after the initial generation.
 
@@ -240,8 +239,11 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             var count = 0;
             var changedCount = 0;
 
+            var hashiClient = new HashicorpVaultClient(_caConfig);
+
             try
             {
+                
                 logger.LogTrace("getting all certificate serial numbers from vault");
                 certSerials = await hashiClient.GetAllCertSerialNumbers();
             }
@@ -264,7 +266,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 try
                 {
                     logger.LogTrace($"Calling GetCertificate on our client, passing serial number: {certSerial}");
-                    certFromVault = await hashiClient.GetCertificate(certSerial);
+                    certFromVault = hashiClient.GetCertificate(certSerial).Result;
                 }
                 catch (Exception ex)
                 {

@@ -27,11 +27,11 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
     {
         private HashicorpVaultCAConfig _caConfig { get; set; }
         private HashicorpVaultCATemplateConfig _templateConfig { get; set; }
-
-        private static readonly ILogger logger = LogHandler.GetClassLogger<HashicorpVaultClient>();
+        private readonly ILogger logger;        
 
         public HashicorpVaultClient(HashicorpVaultCAConfig caConfig, HashicorpVaultCATemplateConfig templateConfig = null)
         {
+            logger = LogHandler.GetClassLogger<HashicorpVaultClient>();
             logger.MethodEntry();
             _caConfig = caConfig;
             _templateConfig = templateConfig;
@@ -91,7 +91,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     }
                     else
                     {
-                        throw new Exception("No Common Name or DNS SAN provided, unable to enroll");
+                        throw new Exception("no Common Name or DNS SAN provided, unable to enroll");
                     }
                 }
 
@@ -259,15 +259,18 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.MethodEntry();
 
             var hostUrl = _caConfig.Host; // host url and authentication details come from the CA config
+            logger.LogTrace($"set value for Host url: {hostUrl}");
+
             var token = _caConfig.Token;
+            logger.LogTrace($"set value for authentication token: {token ?? "(not defined)"}");
+
             var nameSpace = string.IsNullOrEmpty(_templateConfig?.Namespace) ? _caConfig.Namespace : _templateConfig.Namespace; // Namespace comes from templateconfig if available, otherwise defaults to caConfig; can be null
+            logger.LogTrace($"set value for Namespace: {nameSpace ?? "(not defined)"}");
+
             var mountPoint = string.IsNullOrEmpty(_templateConfig?.MountPoint) ? _caConfig.MountPoint : _templateConfig.MountPoint; // Mountpoint comes from templateconfig if available, otherwise defaults to caConfig; if null, uses "pki" (Vault Default)
             mountPoint = mountPoint ?? "pki"; // using the vault default PKI secrets engine mount point if not present in config
-
-            logger.LogTrace($"set value for Host url: {hostUrl}");
-            logger.LogTrace($"set value for authentication token: {token ?? "(not defined)"}");
-            logger.LogTrace($"set value for Namespace: {nameSpace ?? "(not defined)"}");
             logger.LogTrace($"set value for Mountpoint: {mountPoint}");
+
 
             // _certAuthInfo = caConfig?.ClientCertificate;
             // logger.LogTrace($"set value for Certificate authentication; thumbprint: {_certAuthInfo?.Thumbprint ?? "(missing) - using token authentication"}");
@@ -276,8 +279,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             //{
             //    throw new MissingFieldException("Either an authentication token or certificate to use for authentication into Vault must be provided.");
             //}
-            logger.MethodExit();
-
+           
             return new VaultHttp(hostUrl, mountPoint, token, nameSpace);            
         }
     }

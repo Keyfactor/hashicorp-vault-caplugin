@@ -28,6 +28,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
         private string _authToken { get; set; }
         private string _nameSpace { get; set; }
         private JsonSerializerOptions _serializerOptions { get; set; }
+        private readonly ILogger logger;
 
         private RestClient _restClient;
         protected RestClient restClient
@@ -46,14 +47,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 logger.LogTrace($"namespace: {_nameSpace}");
                 return _restClient;
             }
-        }        
-
-        private static readonly ILogger logger = LogHandler.GetClassLogger<VaultHttp>();
+        }
 
         public VaultHttp(string host, string mountPoint, string authToken, string nameSpace = null)
         {
+            logger = LogHandler.GetClassLogger<VaultHttp>();
             logger.MethodEntry();
-
             _serializerOptions = new()
             {
                 DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
@@ -71,7 +70,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
             }
 
             logger.LogTrace($"configured our httpclient wrapper with the following values:\nbase path: {_vaultApiPath}\nnamespace: {(!string.IsNullOrEmpty(_nameSpace) ? _nameSpace : "(no namespace configured)")}\nmount point: {_mountPoint}\nauth token: {_authToken.Substring(0, 8)}...");
-
             logger.MethodExit();
         }
 
@@ -87,7 +85,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
         {
             logger.MethodEntry();
             logger.LogTrace($"preparing to send GET request to {path} with parameters {JsonSerializer.Serialize(parameters)}");
-            logger.LogTrace($"will attempt to deserialize the response into a {typeof(T)}");
+            logger.LogTrace($"will attempt to deserialize the response into a {typeof(T).Name}");
             try
             {
                 var request = new RestRequest($"{_mountPoint}/{path}", Method.Get);
@@ -101,7 +99,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
             }
             catch (Exception ex)
             {
-                logger.LogError($"there was an error making the request: {LogHandler.FlattenException(ex)}");
+                logger.LogError($"there was an error making the GET request: {LogHandler.FlattenException(ex)}");
                 throw;
             }
             finally
@@ -132,7 +130,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
 
                 logger.LogTrace($"full url for the request: {restClient.Options.BaseUrl}/{request.Resource}");
 
-                var response = await _restClient.ExecutePostAsync<T>(request);
+                var response = await restClient.ExecutePostAsync<T>(request);
 
                 logger.LogTrace($"request completed. response returned:");
                 logger.LogTrace($"response.StatusCode: {response!.StatusCode}");
@@ -157,7 +155,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
             }
             catch (Exception ex)
             {
-                logger.LogError($"there was an error making the request: {LogHandler.FlattenException(ex)}");
+                logger.LogError($"there was an error making the POST request: {LogHandler.FlattenException(ex)}");
                 throw;
             }
             finally
@@ -177,7 +175,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
             }
             catch (Exception ex)
             {
-                logger.LogError($"there was an error making the request: {LogHandler.FlattenException(ex)}");
+                logger.LogError($"there was an error making the health-check request: {LogHandler.FlattenException(ex)}");
                 throw;
             }
             finally
@@ -185,36 +183,10 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 DisposeRestClient();
                 logger.MethodExit();
             }
-        }
-
-        /// <summary>
-        /// gets the capabilities for the current token in the given namespace.
-        /// using this method to verify connectivity
-        /// </summary>
-        /// <returns></returns>
-        public async Task<List<string>> GetCapabilitiesForThisTokenAndNamespace()
-        {
-            logger.MethodEntry();
-            try
-            {
-                var response = await _restClient.GetAsync<dynamic>("sys/capabilities/self");
-                response!.ThrowIfError();
-                return response.Content?.data?.capabilities as List<string>;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"request to get capabilities for token failed: {LogHandler.FlattenException(ex)}");
-                throw;
-            }
-            finally
-            {
-                DisposeRestClient();
-                logger.MethodExit();
-            }
-        }
+        }        
 
         private void DisposeRestClient() {
-            _restClient.Dispose();
+            _restClient?.Dispose();
             _restClient = null;
         }
     }
