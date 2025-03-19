@@ -49,11 +49,10 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         public void Initialize(IAnyCAPluginConfigProvider configProvider, ICertificateDataReader certificateDataReader)
         {
             logger.MethodEntry(LogLevel.Trace);
-            string rawConfig = JsonSerializer.Serialize(configProvider.CAConnectionData);
-            logger.LogTrace($"serialized config: {rawConfig}");
-            _caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(rawConfig);            
-            //_client = new HashicorpVaultClient(_caConfig);
             _certificateDataReader = certificateDataReader;
+            string rawConfig = JsonSerializer.Serialize(configProvider.CAConnectionData);            
+            logger.LogTrace($"serialized config: {rawConfig}");
+            _caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(rawConfig);
             logger.MethodExit(LogLevel.Trace);
         }
 
@@ -225,7 +224,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// </summary>
         /// <param name="certificateDataReader">Provides information about the gateway's certificate database.</param>
         /// <param name="blockingBuffer">Buffer into which certificates are places from the CA.</param>
-        /// <param name="certificateAuthoritySyncInfo">Information about the last CA sync.</param>
         /// <param name="cancelToken">The cancellation token.</param>
         public async Task Synchronize(BlockingCollection<AnyCAPluginCertificate> blockingBuffer, DateTime? lastSync, bool fullSync, CancellationToken cancelToken)
         {            
@@ -235,17 +233,16 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.MethodEntry();
             logger.LogTrace("Beginning Synchronization Task..");
 
-            var certSerials = new List<string>();
+            var certSerials = new BlockingCollection<string>();
             var count = 0;
             var changedCount = 0;
 
             var hashiClient = new HashicorpVaultClient(_caConfig);
 
             try
-            {
-                
+            {                
                 logger.LogTrace("getting all certificate serial numbers from vault");
-                certSerials = await hashiClient.GetAllCertSerialNumbers();
+                await hashiClient.GetAllCertSerialNumbers(certSerials, cancelToken);
             }
             catch (Exception ex)
             {
@@ -254,11 +251,21 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 throw;
             }
 
-            logger.LogTrace($"got {certSerials.Count()} serial numbers. Begin checking status for each...");
+            logger.LogTrace($"got {certSerials?.Count() ?? 0} serial numbers. Begin checking status for each...");
 
-            foreach (var certSerial in certSerials)
+            if (certSerials == null || certSerials.Count == 0) { // exit if no certs were found in vault
+                blockingBuffer.CompleteAdding();
+                logger.LogTrace($"no certificates found at path {_caConfig.Host} using namespace {_caConfig.Namespace} and mount point {_caConfig.MountPoint}");
+                logger.MethodExit();
+                return;
+            }
+
+            foreach (var certSerial in certSerials.GetConsumingEnumerable())
             {
-                cancelToken.ThrowIfCancellationRequested();
+                if (cancelToken.IsCancellationRequested)
+                {
+                    break;
+                }
                 CertResponse certFromVault = null;
                 var dbStatus = -1;
 
@@ -281,7 +288,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 // then, check for an existing local entry
                 try
                 {
-                    logger.LogTrace($"attempting to retreive status of cert with tracking id {trackingId} from the database");
+                    logger.LogTrace($"attempting to retreive status of cert with tracking id {trackingId} from the database");                    
                     dbStatus = await _certificateDataReader.GetStatusByRequestID(trackingId);
                 }
                 catch(Exception ex) // an exception is thrown if cert doesn't exist
@@ -320,6 +327,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     catch (Exception ex)
                     {
                         logger.LogError($"Failed to add the cert to the database: {LogHandler.FlattenException(ex)}");
+                        logger.LogTrace($"closing buffer and aborting sync");
                         blockingBuffer.CompleteAdding();
                         break;
                     }

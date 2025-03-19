@@ -11,9 +11,11 @@ using Keyfactor.Logging;
 using Microsoft.Extensions.Logging;
 using Org.BouncyCastle.Asn1.X509;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
@@ -197,15 +199,28 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// Retreives all serial numbers for issued certificates 
         /// </summary>
         /// <returns>a list of the certificate serial number strings</returns>
-        public async Task<List<string>> GetAllCertSerialNumbers()
+        public async Task GetAllCertSerialNumbers(BlockingCollection<string> serialNumberCollection, CancellationToken token)
         {
+            if (token.IsCancellationRequested) {
+                logger.LogWarning($"cancelation was requested.  Stopping task");
+                serialNumberCollection.CompleteAdding();
+                return;
+            }
             logger.MethodEntry();
-            var keys = new List<string>();
             try
             {
                 var _vaultHttp = ConfigureNewVaultClient();
                 var res = await _vaultHttp.GetAsync<WrappedResponse<KeyedList>>("certs/?list=true");
-                return res.Data.Entries;
+                var serials = res.Data?.Entries;
+                if (serials == null || serials.Count == 0) {
+                    return;
+                }
+                foreach (var serial in serials) {
+                    if (!serialNumberCollection.TryAdd(serial, 50, token)) {
+                        logger.LogWarning($"unable to add serial number {serial} to the collection");
+                    }
+                }
+                serialNumberCollection.CompleteAdding();
             }
             catch (Exception ex)
             {
@@ -257,30 +272,40 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         private VaultHttp ConfigureNewVaultClient()
         {
             logger.MethodEntry();
+            try
+            {
+                var hostUrl = _caConfig.Host; // host url and authentication details come from the CA config
+                logger.LogTrace($"set value for Host url: {hostUrl}");
 
-            var hostUrl = _caConfig.Host; // host url and authentication details come from the CA config
-            logger.LogTrace($"set value for Host url: {hostUrl}");
+                var token = _caConfig.Token;
+                logger.LogTrace($"set value for authentication token: {token ?? "(not defined)"}");
 
-            var token = _caConfig.Token;
-            logger.LogTrace($"set value for authentication token: {token ?? "(not defined)"}");
+                var nameSpace = string.IsNullOrEmpty(_templateConfig?.Namespace) ? _caConfig.Namespace : _templateConfig.Namespace; // Namespace comes from templateconfig if available, otherwise defaults to caConfig; can be null
+                logger.LogTrace($"set value for Namespace: {nameSpace ?? "(not defined)"}");
 
-            var nameSpace = string.IsNullOrEmpty(_templateConfig?.Namespace) ? _caConfig.Namespace : _templateConfig.Namespace; // Namespace comes from templateconfig if available, otherwise defaults to caConfig; can be null
-            logger.LogTrace($"set value for Namespace: {nameSpace ?? "(not defined)"}");
-
-            var mountPoint = string.IsNullOrEmpty(_templateConfig?.MountPoint) ? _caConfig.MountPoint : _templateConfig.MountPoint; // Mountpoint comes from templateconfig if available, otherwise defaults to caConfig; if null, uses "pki" (Vault Default)
-            mountPoint = mountPoint ?? "pki"; // using the vault default PKI secrets engine mount point if not present in config
-            logger.LogTrace($"set value for Mountpoint: {mountPoint}");
+                var mountPoint = string.IsNullOrEmpty(_templateConfig?.MountPoint) ? _caConfig.MountPoint : _templateConfig.MountPoint; // Mountpoint comes from templateconfig if available, otherwise defaults to caConfig; if null, uses "pki" (Vault Default)
+                mountPoint = mountPoint ?? "pki"; // using the vault default PKI secrets engine mount point if not present in config
+                logger.LogTrace($"set value for Mountpoint: {mountPoint}");
 
 
-            // _certAuthInfo = caConfig?.ClientCertificate;
-            // logger.LogTrace($"set value for Certificate authentication; thumbprint: {_certAuthInfo?.Thumbprint ?? "(missing) - using token authentication"}");
+                // _certAuthInfo = caConfig?.ClientCertificate;
+                // logger.LogTrace($"set value for Certificate authentication; thumbprint: {_certAuthInfo?.Thumbprint ?? "(missing) - using token authentication"}");
 
-            //if (_token == null && _certAuthInfo == null)
-            //{
-            //    throw new MissingFieldException("Either an authentication token or certificate to use for authentication into Vault must be provided.");
-            //}
-           
-            return new VaultHttp(hostUrl, mountPoint, token, nameSpace);            
+                //if (_token == null && _certAuthInfo == null)
+                //{
+                //    throw new MissingFieldException("Either an authentication token or certificate to use for authentication into Vault must be provided.");
+                //}
+
+                return new VaultHttp(hostUrl, mountPoint, token, nameSpace);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError($"error when creating new vault client: {LogHandler.FlattenException(ex)}");
+                throw;
+            }
+            finally {
+                logger.MethodExit();
+            }
         }
     }
 }
