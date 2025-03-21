@@ -241,7 +241,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             try
             {                
-                logger.LogTrace("getting all certificate serial numbers from vault");
+                logger.LogTrace($"getting all certificate serial numbers from vault from {_caConfig.Host} using namespace {_caConfig.Namespace} and mount-point {_caConfig.MountPoint}");
                 await hashiClient.GetAllCertSerialNumbers(certSerials, cancelToken);
             }
             catch (Exception ex)
@@ -329,7 +329,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                         logger.LogError($"Failed to add the cert to the database: {LogHandler.FlattenException(ex)}");
                         logger.LogTrace($"closing buffer and aborting sync");
                         blockingBuffer.CompleteAdding();
-                        break;
+                        throw;
                     }
                 }
                 else // the cert exists in the database; just update the status if necessary

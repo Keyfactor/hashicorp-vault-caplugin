@@ -209,12 +209,13 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.MethodEntry();
             try
             {
-                var _vaultHttp = ConfigureNewVaultClient();
+                var _vaultHttp = ConfigureNewVaultClient();                
                 var res = await _vaultHttp.GetAsync<WrappedResponse<KeyedList>>("certs/?list=true");
                 var serials = res.Data?.Entries;
                 if (serials == null || serials.Count == 0) {
                     return;
                 }
+                logger.LogTrace($"got {res.Data?.Entries?.Count} serial numbers from {_caConfig.Host} namespace: {_caConfig.Namespace}, mount-point: {_caConfig.MountPoint}");
                 foreach (var serial in serials) {
                     if (!serialNumberCollection.TryAdd(serial, 50, token)) {
                         logger.LogWarning($"unable to add serial number {serial} to the collection");
@@ -224,7 +225,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
             catch (Exception ex)
             {
-                logger.LogError($"there was an error retreiving the certificate keys: {ex.Message}");
+                logger.LogError($"there was an error retreiving the certificate keys from {_caConfig.Host} using namespace: {_templateConfig.Namespace ?? _caConfig.Namespace} and mount-point: {_caConfig.MountPoint}.  Error: {ex.Message}");
                 throw;
             }
             finally { logger.MethodExit(); }

@@ -92,7 +92,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 if (parameters != null) { request.AddJsonBody(parameters); }
 
                 var response = await restClient.ExecuteGetAsync<T>(request);
-
+                logger.LogTrace($"response headers: {response.Headers}\nresponse content: {response.Content}\nresponse data: {response.Data}");
                 response.ThrowIfError();
 
                 return response.Data;
