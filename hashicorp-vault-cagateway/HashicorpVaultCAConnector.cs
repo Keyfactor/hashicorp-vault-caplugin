@@ -18,13 +18,16 @@ using System.Text.Json.Serialization;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 {
     public class HashicorpVaultCAConnector : IAnyCAPlugin
     {
         private readonly ILogger logger;
+        private static int _threadLock = 0;
         private HashicorpVaultCAConfig _caConfig { get; set; }
+
         //private HashicorpVaultClient _client { get; set; }
         private ICertificateDataReader _certificateDataReader;
         private JsonSerializerOptions _serializerOptions;
@@ -46,11 +49,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// Initialize the <see cref="HashicorpVaultCAConnector"/>
         /// </summary>
         /// <param name="configProvider">The config provider contains information required to connect to the CA.</param>
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Initialize(IAnyCAPluginConfigProvider configProvider, ICertificateDataReader certificateDataReader)
         {
             logger.MethodEntry(LogLevel.Trace);
             _certificateDataReader = certificateDataReader;
-            string rawConfig = JsonSerializer.Serialize(configProvider.CAConnectionData);            
+            string rawConfig = JsonSerializer.Serialize(configProvider.CAConnectionData);
             logger.LogTrace($"serialized config: {rawConfig}");
             _caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(rawConfig);
             logger.MethodExit(LogLevel.Trace);
@@ -68,7 +72,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// <returns></returns>
         public async Task<EnrollmentResult> Enroll(string csr, string subject, Dictionary<string, string[]> san, EnrollmentProductInfo productInfo, RequestFormat requestFormat, EnrollmentType enrollmentType)
         {
-            logger.MethodEntry(LogLevel.Trace);            
+            logger.MethodEntry(LogLevel.Trace);
 
             logger.LogInformation($"Begin {enrollmentType} enrollment for {subject}");
             string statusMessage;
@@ -143,7 +147,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         {
             logger.MethodEntry();
 
-            var hashiClient  = new HashicorpVaultClient(_caConfig);
+            var hashiClient = new HashicorpVaultClient(_caConfig);
 
             logger.LogTrace($"preparing to send request to retrieve certificate with id {caRequestID}");
             try
@@ -224,25 +228,32 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// </summary>
         /// <param name="certificateDataReader">Provides information about the gateway's certificate database.</param>
         /// <param name="blockingBuffer">Buffer into which certificates are places from the CA.</param>
-        /// <param name="cancelToken">The cancellation token.</param>
+        /// <param name="cancelToken">The cancellation token.</param>        
         public async Task Synchronize(BlockingCollection<AnyCAPluginCertificate> blockingBuffer, DateTime? lastSync, bool fullSync, CancellationToken cancelToken)
-        {            
+        {
             // !! Any certificates issued outside of this CA Gateway will not necessarily be associated with the role name / (product ID) that was used to generate it
             // !! since that value is not retreivable after the initial generation.
 
             logger.MethodEntry();
             logger.LogTrace("Beginning Synchronization Task..");
 
-            var certSerials = new BlockingCollection<string>();
+            var certSerials = new List<string>();
             var count = 0;
             var changedCount = 0;
 
-            var hashiClient = new HashicorpVaultClient(_caConfig);
+            HashicorpVaultClient hashiClient;
+
+            logger.LogTrace("attempt locking of _caConfig.");
+            Monitor.Enter(_caConfig);
+
 
             try
-            {                
+            {
+                
+                hashiClient = new HashicorpVaultClient(_caConfig);
                 logger.LogTrace($"getting all certificate serial numbers from vault from {_caConfig.Host} using namespace {_caConfig.Namespace} and mount-point {_caConfig.MountPoint}");
-                await hashiClient.GetAllCertSerialNumbers(certSerials, cancelToken);
+                var serials = hashiClient.GetAllCertSerialNumbers(cancelToken).Result;
+                Interlocked.Exchange(ref certSerials, serials);
             }
             catch (Exception ex)
             {
@@ -250,17 +261,22 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 blockingBuffer.CompleteAdding();
                 throw;
             }
+            finally
+            {
+                Monitor.Exit(_caConfig);
+            }
 
             logger.LogTrace($"got {certSerials?.Count() ?? 0} serial numbers. Begin checking status for each...");
 
-            if (certSerials == null || certSerials.Count == 0) { // exit if no certs were found in vault
+            if (certSerials == null || certSerials.Count == 0)
+            { // exit if no certs were found in vault
                 blockingBuffer.CompleteAdding();
                 logger.LogTrace($"no certificates found at path {_caConfig.Host} using namespace {_caConfig.Namespace} and mount point {_caConfig.MountPoint}");
                 logger.MethodExit();
-                return;
+                return;                
             }
 
-            foreach (var certSerial in certSerials.GetConsumingEnumerable())
+            foreach (var certSerial in certSerials)
             {
                 if (cancelToken.IsCancellationRequested)
                 {
@@ -281,6 +297,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     blockingBuffer.CompleteAdding();
                     throw;
                 }
+                finally { Monitor.Exit(_caConfig); }
                 logger.LogTrace($"converting {certSerial} to database trackingId");
 
                 var trackingId = certSerial.Replace(":", "-"); // we store with '-'; hashi stores with ':'
@@ -288,23 +305,25 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 // then, check for an existing local entry
                 try
                 {
-                    logger.LogTrace($"attempting to retreive status of cert with tracking id {trackingId} from the database");                    
+                    logger.LogTrace($"attempting to retreive status of cert with tracking id {trackingId} from the database");
                     dbStatus = await _certificateDataReader.GetStatusByRequestID(trackingId);
                 }
-                catch(Exception ex) // an exception is thrown if cert doesn't exist
-                {   
-                    if (!ex.Message.Contains("No matching")) { // if the exception message doesn't contain this; something else happened.
+                catch (Exception ex) // an exception is thrown if cert doesn't exist
+                {
+                    if (!ex.Message.Contains("No matching"))
+                    { // if the exception message doesn't contain this; something else happened.
                         logger.LogTrace($"exception when retrieving cert from database: {ex.Message}");
                         blockingBuffer.CompleteAdding();
                         throw;
                     }
                     logger.LogTrace($"tracking id {trackingId} was not found in the database.  it will be added.");
                 }
+                finally { Monitor.Exit(_caConfig); }
 
                 if (dbStatus == -1 || fullSync) // it's missing and needs added, or a full sync is requested
                 {
                     logger.LogTrace($"adding cert with serial {trackingId} to the database.  fullsync is {fullSync}, and the certificate {(dbStatus == -1 ? "does not yet exist" : "already exists")} in the database.");
-                    changedCount++;
+                    Interlocked.Increment(ref changedCount);
                     var newCert = new AnyCAPluginCertificate
                     {
                         CARequestID = trackingId,
@@ -320,9 +339,10 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                         {
                             logger.LogTrace($"successfully added certificate to the database.");
                         }
-                        else {
+                        else
+                        {
                             logger.LogTrace($"adding to queue for writing was blocked.");
-                        }                        
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -331,6 +351,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                         blockingBuffer.CompleteAdding();
                         throw;
                     }
+                    finally { Monitor.Exit(_caConfig); }
                 }
                 else // the cert exists in the database; just update the status if necessary
                 {
@@ -339,7 +360,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     var vaultStatus = revoked ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED;
                     if (vaultStatus != dbStatus) // if there is a mismatch, we need to update
                     {
-                        changedCount++;
+                        Interlocked.Increment(ref changedCount);
                         logger.LogTrace($"status in vault is {vaultStatus}, status in db is {dbStatus}; updating db.");
                         var newCert = new AnyCAPluginCertificate
                         {
@@ -358,15 +379,17 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                             logger.LogTrace($"adding to queue for writing was blocked.");
                         }
                     }
-                    else {
+                    else
+                    {
                         logger.LogTrace($"The status is unchanged and we are doing an incremental scan; no need to update db.");
                     }
                 }
-                count++;
+                Interlocked.Increment(ref count);
             }
             blockingBuffer.CompleteAdding();
             logger.LogTrace($"Completed sync of {count} certificates.  It was {(fullSync ? "a full" : "an incremental")} sync and {changedCount} records were updated.");
             logger.MethodExit();
+            Monitor.Exit(_caConfig);
         }
 
         /// <summary>
@@ -621,7 +644,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         public List<string> GetProductIds()
         {
             logger.MethodEntry();
-            var hashiClient = new HashicorpVaultClient(_caConfig);            
+            var hashiClient = new HashicorpVaultClient(_caConfig);
             try
             {
                 logger.LogTrace("requesting role names from vault..");

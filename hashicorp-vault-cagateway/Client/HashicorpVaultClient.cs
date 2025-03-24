@@ -29,7 +29,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
     {
         private HashicorpVaultCAConfig _caConfig { get; set; }
         private HashicorpVaultCATemplateConfig _templateConfig { get; set; }
-        private readonly ILogger logger;        
+        private readonly ILogger logger;
 
         public HashicorpVaultClient(HashicorpVaultCAConfig caConfig, HashicorpVaultCATemplateConfig templateConfig = null)
         {
@@ -51,8 +51,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             string commonName = null, organization = null, orgUnit = null;
 
             logger.LogTrace($"SAN values: ");
-            foreach (var key in san.Keys) {
-                logger.LogTrace($"{key}: {string.Join(",", san[key])}");            
+            foreach (var key in san.Keys)
+            {
+                logger.LogTrace($"{key}: {string.Join(",", san[key])}");
             }
 
             if (san.ContainsKey("dnsname"))
@@ -112,9 +113,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogTrace($"got a response from vault..");
 
                 if (response.Warnings?.Count > 0) { logger.LogTrace($"the response contained warnings: {string.Join(", ", response.Warnings)}"); }
-                
-                logger.LogTrace($"serialized SignResponse: {JsonSerializer.Serialize(response.Data)}");        
-               
+
+                logger.LogTrace($"serialized SignResponse: {JsonSerializer.Serialize(response.Data)}");
+
                 return response.Data;
             }
             catch (Exception ex)
@@ -181,7 +182,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogTrace($"-- Vault health check response --");
                 logger.LogTrace($"Vault version : {res.VaultVersion}");
                 logger.LogTrace($"sealed? : {res.Sealed}");
-                logger.LogTrace($"initialized? : {res.Initialized}");                
+                logger.LogTrace($"initialized? : {res.Initialized}");
                 return true;
             }
             catch (Exception ex)
@@ -199,29 +200,26 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// Retreives all serial numbers for issued certificates 
         /// </summary>
         /// <returns>a list of the certificate serial number strings</returns>
-        public async Task GetAllCertSerialNumbers(BlockingCollection<string> serialNumberCollection, CancellationToken token)
+        public async Task<List<string>> GetAllCertSerialNumbers(CancellationToken token)
         {
-            if (token.IsCancellationRequested) {
-                logger.LogWarning($"cancelation was requested.  Stopping task");
-                serialNumberCollection.CompleteAdding();
-                return;
+            var certSerials = new List<string>();
+            if (token.IsCancellationRequested)
+            {
+                logger.LogWarning($"cancelation was requested; stopping task");
+                return certSerials;
             }
             logger.MethodEntry();
             try
             {
-                var _vaultHttp = ConfigureNewVaultClient();                
+                var _vaultHttp = ConfigureNewVaultClient();
                 var res = await _vaultHttp.GetAsync<WrappedResponse<KeyedList>>("certs/?list=true");
                 var serials = res.Data?.Entries;
-                if (serials == null || serials.Count == 0) {
-                    return;
+                if (serials == null || serials.Count == 0)
+                {
+                    return certSerials;
                 }
                 logger.LogTrace($"got {res.Data?.Entries?.Count} serial numbers from {_caConfig.Host} namespace: {_caConfig.Namespace}, mount-point: {_caConfig.MountPoint}");
-                foreach (var serial in serials) {
-                    if (!serialNumberCollection.TryAdd(serial, 50, token)) {
-                        logger.LogWarning($"unable to add serial number {serial} to the collection");
-                    }
-                }
-                serialNumberCollection.CompleteAdding();
+                return serials;
             }
             catch (Exception ex)
             {
@@ -267,7 +265,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError($"There was a problem retreiving the PKI role names: {LogHandler.FlattenException(ex)}");
                 throw;
             }
-            finally { logger.MethodExit(); }            
+            finally { logger.MethodExit(); }
         }
 
         private VaultHttp ConfigureNewVaultClient()
@@ -304,7 +302,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError($"error when creating new vault client: {LogHandler.FlattenException(ex)}");
                 throw;
             }
-            finally {
+            finally
+            {
                 logger.MethodExit();
             }
         }
