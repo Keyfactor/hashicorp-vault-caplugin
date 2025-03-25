@@ -25,8 +25,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
     public class HashicorpVaultCAConnector : IAnyCAPlugin
     {
         private readonly ILogger logger;
-        private static int _threadLock = 0;
-        private HashicorpVaultCAConfig _caConfig { get; set; }
+        private static readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1); // Binary semaphore (1 indicates only one thread/task can enter)
+        private HashicorpVaultCAConfig _caConfig;
 
         //private HashicorpVaultClient _client { get; set; }
         private ICertificateDataReader _certificateDataReader;
@@ -233,8 +233,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         {
             // !! Any certificates issued outside of this CA Gateway will not necessarily be associated with the role name / (product ID) that was used to generate it
             // !! since that value is not retreivable after the initial generation.
-
             logger.MethodEntry();
+
+            await _semaphore.WaitAsync(cancelToken);
+
+            logger.LogTrace($"got semaphore lock, current count: {_semaphore.CurrentCount}");
+
             logger.LogTrace("Beginning Synchronization Task..");
 
             var certSerials = new List<string>();
@@ -243,153 +247,153 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             HashicorpVaultClient hashiClient;
 
-            logger.LogTrace("attempt locking of _caConfig.");
-            Monitor.Enter(_caConfig);
-
-
             try
-            {
-                
-                hashiClient = new HashicorpVaultClient(_caConfig);
-                logger.LogTrace($"getting all certificate serial numbers from vault from {_caConfig.Host} using namespace {_caConfig.Namespace} and mount-point {_caConfig.MountPoint}");
-                var serials = hashiClient.GetAllCertSerialNumbers(cancelToken).Result;
-                Interlocked.Exchange(ref certSerials, serials);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError($"failed to retreive serial numbers: {LogHandler.FlattenException(ex)}");
-                blockingBuffer.CompleteAdding();
-                throw;
-            }
-            finally
-            {
-                Monitor.Exit(_caConfig);
-            }
+            { // wrapper for single thread block
 
-            logger.LogTrace($"got {certSerials?.Count() ?? 0} serial numbers. Begin checking status for each...");
-
-            if (certSerials == null || certSerials.Count == 0)
-            { // exit if no certs were found in vault
-                blockingBuffer.CompleteAdding();
-                logger.LogTrace($"no certificates found at path {_caConfig.Host} using namespace {_caConfig.Namespace} and mount point {_caConfig.MountPoint}");
-                logger.MethodExit();
-                return;                
-            }
-
-            foreach (var certSerial in certSerials)
-            {
-                if (cancelToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                CertResponse certFromVault = null;
-                var dbStatus = -1;
-
-                // first, retreive the details from Vault
                 try
                 {
-                    logger.LogTrace($"Calling GetCertificate on our client, passing serial number: {certSerial}");
-                    certFromVault = hashiClient.GetCertificate(certSerial).Result;
+
+                    hashiClient = new HashicorpVaultClient(_caConfig);
+                    logger.LogTrace($"getting all certificate serial numbers from vault from {_caConfig.Host} using namespace {_caConfig.Namespace} and mount-point {_caConfig.MountPoint}");
+                    certSerials = await hashiClient.GetAllCertSerialNumbers(cancelToken);
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError($"Failed to retreive details for certificate with serial number {certSerial} from Vault.  Errors: {LogHandler.FlattenException(ex)}");
+                    logger.LogError($"failed to retreive serial numbers: {LogHandler.FlattenException(ex)}");
                     blockingBuffer.CompleteAdding();
+                    _semaphore.Release();
                     throw;
                 }
-                finally { Monitor.Exit(_caConfig); }
-                logger.LogTrace($"converting {certSerial} to database trackingId");
 
-                var trackingId = certSerial.Replace(":", "-"); // we store with '-'; hashi stores with ':'
+                logger.LogTrace($"got {certSerials?.Count() ?? 0} serial numbers. Begin checking status for each...");
 
-                // then, check for an existing local entry
-                try
-                {
-                    logger.LogTrace($"attempting to retreive status of cert with tracking id {trackingId} from the database");
-                    dbStatus = await _certificateDataReader.GetStatusByRequestID(trackingId);
+                if (certSerials == null || certSerials.Count == 0)
+                { // exit if no certs were found in vault
+                    blockingBuffer.CompleteAdding();
+                    logger.LogTrace($"no certificates found at path {_caConfig.Host} using namespace {_caConfig.Namespace} and mount point {_caConfig.MountPoint}");
+                    _semaphore.Release();
+                    logger.MethodExit();                    
+                    return;
                 }
-                catch (Exception ex) // an exception is thrown if cert doesn't exist
-                {
-                    if (!ex.Message.Contains("No matching"))
-                    { // if the exception message doesn't contain this; something else happened.
-                        logger.LogTrace($"exception when retrieving cert from database: {ex.Message}");
-                        blockingBuffer.CompleteAdding();
-                        throw;
-                    }
-                    logger.LogTrace($"tracking id {trackingId} was not found in the database.  it will be added.");
-                }
-                finally { Monitor.Exit(_caConfig); }
 
-                if (dbStatus == -1 || fullSync) // it's missing and needs added, or a full sync is requested
+                foreach (var certSerial in certSerials)
                 {
-                    logger.LogTrace($"adding cert with serial {trackingId} to the database.  fullsync is {fullSync}, and the certificate {(dbStatus == -1 ? "does not yet exist" : "already exists")} in the database.");
-                    Interlocked.Increment(ref changedCount);
-                    var newCert = new AnyCAPluginCertificate
+                    if (cancelToken.IsCancellationRequested)
                     {
-                        CARequestID = trackingId,
-                        Certificate = certFromVault.Certificate,
-                        Status = certFromVault.RevocationTime != null ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
-                        RevocationDate = certFromVault.RevocationTime,
-                    };
+                        break;
+                    }
+                    CertResponse certFromVault = null;
+                    var dbStatus = -1;
 
+                    // first, retreive the details from Vault
                     try
                     {
-                        logger.LogTrace($"writing the result.");
-                        if (blockingBuffer.TryAdd(newCert, 50, cancelToken))
-                        {
-                            logger.LogTrace($"successfully added certificate to the database.");
-                        }
-                        else
-                        {
-                            logger.LogTrace($"adding to queue for writing was blocked.");
-                        }
+                        logger.LogTrace($"Calling GetCertificate on our client, passing serial number: {certSerial}");
+                        certFromVault = hashiClient.GetCertificate(certSerial).Result;
                     }
                     catch (Exception ex)
                     {
-                        logger.LogError($"Failed to add the cert to the database: {LogHandler.FlattenException(ex)}");
-                        logger.LogTrace($"closing buffer and aborting sync");
+                        logger.LogError($"Failed to retreive details for certificate with serial number {certSerial} from Vault.  Errors: {LogHandler.FlattenException(ex)}");
                         blockingBuffer.CompleteAdding();
+                        _semaphore.Release();
                         throw;
                     }
-                    finally { Monitor.Exit(_caConfig); }
-                }
-                else // the cert exists in the database; just update the status if necessary
-                {
-                    logger.LogTrace($"certificate with id {trackingId} was found in the database, comparing status.");
-                    var revoked = certFromVault.RevocationTime != null;
-                    var vaultStatus = revoked ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED;
-                    if (vaultStatus != dbStatus) // if there is a mismatch, we need to update
+                    logger.LogTrace($"converting {certSerial} to database trackingId");
+
+                    var trackingId = certSerial.Replace(":", "-"); // we store with '-'; hashi stores with ':'
+
+                    // then, check for an existing local entry
+                    try
                     {
-                        Interlocked.Increment(ref changedCount);
-                        logger.LogTrace($"status in vault is {vaultStatus}, status in db is {dbStatus}; updating db.");
+                        logger.LogTrace($"attempting to retreive status of cert with tracking id {trackingId} from the database");
+                        dbStatus = await _certificateDataReader.GetStatusByRequestID(trackingId);
+                    }
+                    catch (Exception ex) // an exception is thrown if cert doesn't exist
+                    {
+                        if (!ex.Message.Contains("No matching"))
+                        { // if the exception message doesn't contain this; something else happened.
+                            logger.LogTrace($"exception when retrieving cert from database: {ex.Message}");
+                            blockingBuffer.CompleteAdding();
+                            _semaphore.Release();
+                            throw;
+                        }
+                        logger.LogTrace($"tracking id {trackingId} was not found in the database.  it will be added.");
+                    }
+
+                    if (dbStatus == -1 || fullSync) // it's missing and needs added, or a full sync is requested
+                    {
+                        logger.LogTrace($"adding cert with serial {trackingId} to the database.  fullsync is {fullSync}, and the certificate {(dbStatus == -1 ? "does not yet exist" : "already exists")} in the database.");
+                        changedCount++;
                         var newCert = new AnyCAPluginCertificate
                         {
                             CARequestID = trackingId,
                             Certificate = certFromVault.Certificate,
-                            Status = vaultStatus,
-                            RevocationDate = certFromVault.RevocationTime
-                            // ProductID is not available via the API after the initial issuance.  we do not want to overwrite                            
+                            Status = certFromVault.RevocationTime != null ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
+                            RevocationDate = certFromVault.RevocationTime,
                         };
-                        if (blockingBuffer.TryAdd(newCert, 50, cancelToken))
+
+                        try
                         {
-                            logger.LogTrace($"successfully updated certificate {trackingId} in the database.");
+                            logger.LogTrace($"writing the result.");
+                            if (blockingBuffer.TryAdd(newCert, 50, cancelToken))
+                            {
+                                logger.LogTrace($"successfully added certificate to the database.");
+                            }
+                            else
+                            {
+                                logger.LogTrace($"adding to queue for writing was blocked.");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogError($"Failed to add the cert to the database: {LogHandler.FlattenException(ex)}");
+                            logger.LogTrace($"closing buffer and aborting sync");
+                            blockingBuffer.CompleteAdding();
+                            _semaphore.Release();
+                            throw;
+                        }
+                    }
+                    else // the cert exists in the database; just update the status if necessary
+                    {
+                        logger.LogTrace($"certificate with id {trackingId} was found in the database, comparing status.");
+                        var revoked = certFromVault.RevocationTime != null;
+                        var vaultStatus = revoked ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED;
+                        if (vaultStatus != dbStatus) // if there is a mismatch, we need to update
+                        {
+                            changedCount++;
+                            logger.LogTrace($"status in vault is {vaultStatus}, status in db is {dbStatus}; updating db.");
+                            var newCert = new AnyCAPluginCertificate
+                            {
+                                CARequestID = trackingId,
+                                Certificate = certFromVault.Certificate,
+                                Status = vaultStatus,
+                                RevocationDate = certFromVault.RevocationTime
+                                // ProductID is not available via the API after the initial issuance.  we do not want to overwrite                            
+                            };
+                            if (blockingBuffer.TryAdd(newCert, 50, cancelToken))
+                            {
+                                logger.LogTrace($"successfully updated certificate {trackingId} in the database.");
+                            }
+                            else
+                            {
+                                logger.LogTrace($"adding to queue for writing was blocked.");
+                            }
                         }
                         else
                         {
-                            logger.LogTrace($"adding to queue for writing was blocked.");
+                            logger.LogTrace($"The status is unchanged and we are doing an incremental scan; no need to update db.");
                         }
                     }
-                    else
-                    {
-                        logger.LogTrace($"The status is unchanged and we are doing an incremental scan; no need to update db.");
-                    }
+                    count++;
                 }
-                Interlocked.Increment(ref count);
+                blockingBuffer.CompleteAdding();
+                logger.LogTrace($"Completed sync of {count} certificates.  It was {(fullSync ? "a full" : "an incremental")} sync and {changedCount} records were updated.");
             }
-            blockingBuffer.CompleteAdding();
-            logger.LogTrace($"Completed sync of {count} certificates.  It was {(fullSync ? "a full" : "an incremental")} sync and {changedCount} records were updated.");
-            logger.MethodExit();
-            Monitor.Exit(_caConfig);
+            finally
+            {
+                _semaphore.Release();
+                logger.MethodExit();
+            }            
         }
 
         /// <summary>
