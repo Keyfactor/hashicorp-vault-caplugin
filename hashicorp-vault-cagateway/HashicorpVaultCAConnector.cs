@@ -25,7 +25,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
     public class HashicorpVaultCAConnector : IAnyCAPlugin
     {
         private readonly ILogger logger;
-        private static readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1); // Binary semaphore (1 indicates only one thread/task can enter)
         private HashicorpVaultCAConfig _caConfig;
 
         //private HashicorpVaultClient _client { get; set; }
@@ -235,10 +234,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             // !! since that value is not retreivable after the initial generation.
             logger.MethodEntry();
 
-            await _semaphore.WaitAsync(cancelToken);
-
-            logger.LogTrace($"got semaphore lock, current count: {_semaphore.CurrentCount}");
-
             logger.LogTrace("Beginning Synchronization Task..");
 
             var certSerials = new List<string>();
@@ -260,8 +255,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 catch (Exception ex)
                 {
                     logger.LogError($"failed to retreive serial numbers: {LogHandler.FlattenException(ex)}");
-                    blockingBuffer.CompleteAdding();
-                    _semaphore.Release();
+                    blockingBuffer.CompleteAdding();                    
                     throw;
                 }
 
@@ -270,8 +264,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 if (certSerials == null || certSerials.Count == 0)
                 { // exit if no certs were found in vault
                     blockingBuffer.CompleteAdding();
-                    logger.LogTrace($"no certificates found at path {_caConfig.Host} using namespace {_caConfig.Namespace} and mount point {_caConfig.MountPoint}");
-                    _semaphore.Release();
+                    logger.LogTrace($"no certificates found at path {_caConfig.Host} using namespace {_caConfig.Namespace} and mount point {_caConfig.MountPoint}");                    
                     logger.MethodExit();                    
                     return;
                 }
@@ -294,8 +287,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     catch (Exception ex)
                     {
                         logger.LogError($"Failed to retreive details for certificate with serial number {certSerial} from Vault.  Errors: {LogHandler.FlattenException(ex)}");
-                        blockingBuffer.CompleteAdding();
-                        _semaphore.Release();
+                        blockingBuffer.CompleteAdding();                        
                         throw;
                     }
                     logger.LogTrace($"converting {certSerial} to database trackingId");
@@ -313,8 +305,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                         if (!ex.Message.Contains("No matching"))
                         { // if the exception message doesn't contain this; something else happened.
                             logger.LogTrace($"exception when retrieving cert from database: {ex.Message}");
-                            blockingBuffer.CompleteAdding();
-                            _semaphore.Release();
+                            blockingBuffer.CompleteAdding();                            
                             throw;
                         }
                         logger.LogTrace($"tracking id {trackingId} was not found in the database.  it will be added.");
@@ -348,8 +339,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                         {
                             logger.LogError($"Failed to add the cert to the database: {LogHandler.FlattenException(ex)}");
                             logger.LogTrace($"closing buffer and aborting sync");
-                            blockingBuffer.CompleteAdding();
-                            _semaphore.Release();
+                            blockingBuffer.CompleteAdding();                            
                             throw;
                         }
                     }
@@ -391,7 +381,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
             finally
             {
-                _semaphore.Release();
                 logger.MethodExit();
             }            
         }
