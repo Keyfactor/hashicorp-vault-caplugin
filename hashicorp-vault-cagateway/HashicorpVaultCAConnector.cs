@@ -327,8 +327,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// </summary>
         /// <param name="connectionInfo">The information used to connect to the CA.</param>
         public async Task ValidateCAConnectionInfo(Dictionary<string, object> connectionInfo)
-        {
+        {            
             logger.MethodEntry();
+            logger.LogTrace(message: $"Validating CA connection info: {JsonSerializer.Serialize(connectionInfo)}");
 
             // first, we check to see if the CA Gateway is enabled in the configuration
             if (!(bool)connectionInfo[Constants.CAConfig.ENABLED])
@@ -352,7 +353,10 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             // make sure an authentication mechanism is defined (either certificate or token)
             var token = connectionInfo[Constants.CAConfig.TOKEN] as string;
-            var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
+            
+            //var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
+
+            var cert = string.Empty; // temporary until client cert auth into vault is implemented
 
             if (string.IsNullOrEmpty(token) && string.IsNullOrEmpty(cert))
             {
@@ -422,6 +426,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         public Task ValidateProductInfo(EnrollmentProductInfo productInfo, Dictionary<string, object> connectionInfo)
         {
             logger.MethodEntry();
+
+            logger.LogTrace($"validating product info: {JsonSerializer.Serialize(productInfo)}");
+
             List<string> errors = new List<string>();
 
             HashicorpVaultCATemplateConfig templateConfig = null;
@@ -429,7 +436,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             // deserialize the values
             try
             {
-                templateConfig = JsonSerializer.Deserialize<HashicorpVaultCATemplateConfig>(JsonSerializer.Serialize(productInfo));
+                templateConfig = JsonSerializer.Deserialize<HashicorpVaultCATemplateConfig>(JsonSerializer.Serialize(productInfo.ProductParameters));
                 caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(JsonSerializer.Serialize(connectionInfo));
                 logger.LogTrace("successfully deserialized the product and CA config values.");
             }
@@ -438,6 +445,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError($"failed to deserialize configuration values.  Please make sure the format is correct.");
                 logger.LogError(LogHandler.FlattenException(ex));
                 throw;
+            }
+            logger.LogTrace("tracing template config");
+
+            foreach (var key in productInfo.ProductParameters.Keys)
+            {
+                logger.LogTrace($"{key} : {productInfo.ProductParameters[key]}");
             }
             // make sure Role Name is present in the template config
             if (string.IsNullOrEmpty(productInfo.ProductParameters[Constants.TemplateConfig.ROLENAME] as string))

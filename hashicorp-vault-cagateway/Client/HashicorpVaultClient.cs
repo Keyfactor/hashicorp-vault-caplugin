@@ -146,6 +146,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
         }
 
+        //public async Task<MetadataResponse> GetCertificateMetadata(string serial) {             
+        //    logger.MethodEntry();
+        //    logger.LogTrace($"retreiving metadata for cert with serial: {serial}");
+        //    throw new NotImplementedException();
+        //}
+
         public async Task<RevokeResponse> RevokeCertificate(string serial)
         {
             logger.MethodEntry();

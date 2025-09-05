@@ -23,8 +23,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         [JsonPropertyName(Constants.CAConfig.NAMESPACE)]
         public string Namespace { get; set; }
 
-        [JsonPropertyName(Constants.CAConfig.CLIENTCERT)]
-        public AuthCert ClientCertificate { get; set; }
+        //[JsonPropertyName(Constants.CAConfig.CLIENTCERT)]
+        //public AuthCert ClientCertificate { get; set; }
 
         [JsonPropertyName(Constants.CAConfig.ENABLED)]
         public bool Enabled { get; set; }
