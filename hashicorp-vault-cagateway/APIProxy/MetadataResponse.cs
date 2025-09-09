@@ -10,15 +10,21 @@ using System.Text.Json.Serialization;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 {
-    public class CertResponse
+    public class MetadataResponse
     {
-        [JsonPropertyName("certificate")]
-        public string Certificate { get; set; }
-
-        [JsonPropertyName("revocation_time_rfc3339")]
-        public DateTime? RevocationTime { get; set; }
-
         [JsonPropertyName("issuer_id")]
         public string IssuerId { get; set; }
+
+        [JsonPropertyName("expiration")]
+        public DateTime? Expiration { get; set; }
+
+        [JsonPropertyName("cert_metadata")]
+        public string CertMetadata { get; set; }
+
+        [JsonPropertyName("role")]
+        public string Role { get; set; }
+
+        [JsonPropertyName("serial_number")]
+        public string SerialNumber { get; set; }
     }
 }

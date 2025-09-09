@@ -9,6 +9,7 @@
   "description": "Hashicorp Vault plugin for the AnyCA REST Gateway Framework",
   "gateway_framework": "24.2.0",
   "release_dir": "hashicorp-vault-cagateway/bin/Release",
+  "release_project": "hashicorp-vault-cagateway\\hashicorp-vault-caplugin.csproj",
   "about": {
     "carest": {
       "product_ids": [],
