@@ -1,4 +1,4 @@
-﻿// Copyright 2024 Keyfactor
+﻿// Copyright 2025 Keyfactor
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 // Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS,
@@ -263,7 +263,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 }
                 logger.LogTrace($"converting {certSerial} to database trackingId");
 
-                var trackingId = certSerial.Replace(":", "-"); // we store with '-'; hashi stores with ':'
+                var trackingId =  certSerial.Replace(":", "-"); // we store with '-'; hashi stores with ':'
 
                 // then, check for an existing local entry
                 try
@@ -280,13 +280,32 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 {
                     logger.LogTrace($"adding cert with serial {trackingId} to the database.  fullsync is {fullSync}, and the certificate {(dbStatus == -1 ? "does not yet exist" : "already exists")} in the database.");
 
+                    logger.LogTrace("attempting to retreive the role name (productId) from the certificate metadata, if available");
+
+                    var metaData = new MetadataResponse();
+                    
+                    try
+                    {
+                        metaData = await _client.GetCertMetadata(certSerial);
+                    }
+                    catch (Exception) 
+                    {
+                        logger.LogTrace("an error occurred when attempting to retreive the metadata, continuing..");
+                    }
+
                     var newCert = new AnyCAPluginCertificate
                     {
                         CARequestID = trackingId,
                         Certificate = certFromVault.Certificate,
                         Status = certFromVault.RevocationTime != null ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
-                        RevocationDate = certFromVault.RevocationTime,
+                        RevocationDate = certFromVault.RevocationTime,                        
                     };
+
+                    // if we were able to get the role name from metadata, we include it
+                    if (!string.IsNullOrEmpty(metaData?.Role)) 
+                    {
+                        newCert.ProductID = metaData.Role;
+                    }
 
                     try
                     {
@@ -446,18 +465,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError(LogHandler.FlattenException(ex));
                 throw;
             }
-            logger.LogTrace("tracing template config");
-
-            foreach (var key in productInfo.ProductParameters.Keys)
-            {
-                logger.LogTrace($"{key} : {productInfo.ProductParameters[key]}");
-            }
-            // make sure Role Name is present in the template config
-            if (string.IsNullOrEmpty(productInfo.ProductParameters[Constants.TemplateConfig.ROLENAME] as string))
-            {
-                errors.Add($"The '{Constants.TemplateConfig.ROLENAME}' is required.");
-            }
-
+                        
             // if any errors, throw
             if (errors.Any())
             {

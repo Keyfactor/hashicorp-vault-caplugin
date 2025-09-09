@@ -1,4 +1,4 @@
-﻿// Copyright 2024 Keyfactor
+﻿// Copyright 2025 Keyfactor
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 // Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS,
@@ -146,12 +146,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
         }
 
-        //public async Task<MetadataResponse> GetCertificateMetadata(string serial) {             
-        //    logger.MethodEntry();
-        //    logger.LogTrace($"retreiving metadata for cert with serial: {serial}");
-        //    throw new NotImplementedException();
-        //}
-
         public async Task<RevokeResponse> RevokeCertificate(string serial)
         {
             logger.MethodEntry();
@@ -250,6 +244,41 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 throw;
             }
             finally { logger.MethodExit(); }            
+        }
+
+        /// <summary>
+        /// Retreives the metadata for the certificate
+        /// </summary>
+        /// <param name="certSerial"></param>
+        /// <returns></returns>
+        public async Task<MetadataResponse> GetCertMetadata(string certSerial)
+        {
+            logger.MethodEntry();
+
+            try 
+            {
+                var res = await _vaultHttp.GetAsync<WrappedResponse<MetadataResponse>>($"cert-metadata/{certSerial}");
+                var md = res?.Data;
+                if (md != null)
+                {
+                    logger.LogTrace($"got response from cert-metadata");
+                    logger.LogTrace($"serial number: {md.SerialNumber}");
+                    logger.LogTrace($"issuer id: {md.IssuerId}");
+                    logger.LogTrace($"expiration: {md.Expiration}");
+                    logger.LogTrace($"metadata: {md.CertMetadata}");
+                    logger.LogTrace($"role: {md.Role}");
+                }
+                else {
+                    logger.LogTrace($"no metadata associated with cert {certSerial} could be found.");
+                }
+                return md;
+            }
+            catch (Exception ex)
+            { 
+                logger.LogError($"an error occurred when attempting to retreive the certificate metadata: {ex.Message}");
+                throw;
+            }            
+            finally { logger.MethodExit(); }
         }
 
         private void SetClientValuesFromConfigs(HashicorpVaultCAConfig caConfig, HashicorpVaultCATemplateConfig templateConfig)
