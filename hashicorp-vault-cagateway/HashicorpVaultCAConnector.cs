@@ -1,4 +1,4 @@
-﻿// Copyright 2024 Keyfactor
+﻿// Copyright 2025 Keyfactor
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 // Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS,
@@ -263,7 +263,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 }
                 logger.LogTrace($"converting {certSerial} to database trackingId");
 
-                var trackingId = certSerial.Replace(":", "-"); // we store with '-'; hashi stores with ':'
+                var trackingId =  certSerial.Replace(":", "-"); // we store with '-'; hashi stores with ':'
 
                 // then, check for an existing local entry
                 try
@@ -280,13 +280,32 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 {
                     logger.LogTrace($"adding cert with serial {trackingId} to the database.  fullsync is {fullSync}, and the certificate {(dbStatus == -1 ? "does not yet exist" : "already exists")} in the database.");
 
+                    logger.LogTrace("attempting to retreive the role name (productId) from the certificate metadata, if available");
+
+                    var metaData = new MetadataResponse();
+                    
+                    try
+                    {
+                        metaData = await _client.GetCertMetadata(certSerial);
+                    }
+                    catch (Exception) 
+                    {
+                        logger.LogTrace("an error occurred when attempting to retreive the metadata, continuing..");
+                    }
+
                     var newCert = new AnyCAPluginCertificate
                     {
                         CARequestID = trackingId,
                         Certificate = certFromVault.Certificate,
                         Status = certFromVault.RevocationTime != null ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
-                        RevocationDate = certFromVault.RevocationTime,
+                        RevocationDate = certFromVault.RevocationTime,                        
                     };
+
+                    // if we were able to get the role name from metadata, we include it
+                    if (!string.IsNullOrEmpty(metaData?.Role)) 
+                    {
+                        newCert.ProductID = metaData.Role;
+                    }
 
                     try
                     {
@@ -327,8 +346,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// </summary>
         /// <param name="connectionInfo">The information used to connect to the CA.</param>
         public async Task ValidateCAConnectionInfo(Dictionary<string, object> connectionInfo)
-        {
+        {            
             logger.MethodEntry();
+            logger.LogTrace(message: $"Validating CA connection info: {JsonSerializer.Serialize(connectionInfo)}");
 
             // first, we check to see if the CA Gateway is enabled in the configuration
             if (!(bool)connectionInfo[Constants.CAConfig.ENABLED])
@@ -352,7 +372,10 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             // make sure an authentication mechanism is defined (either certificate or token)
             var token = connectionInfo[Constants.CAConfig.TOKEN] as string;
-            var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
+            
+            //var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
+
+            var cert = string.Empty; // temporary until client cert auth into vault is implemented
 
             if (string.IsNullOrEmpty(token) && string.IsNullOrEmpty(cert))
             {
@@ -422,6 +445,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         public Task ValidateProductInfo(EnrollmentProductInfo productInfo, Dictionary<string, object> connectionInfo)
         {
             logger.MethodEntry();
+
+            logger.LogTrace($"validating product info: {JsonSerializer.Serialize(productInfo)}");
+
             List<string> errors = new List<string>();
 
             HashicorpVaultCATemplateConfig templateConfig = null;
@@ -429,7 +455,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             // deserialize the values
             try
             {
-                templateConfig = JsonSerializer.Deserialize<HashicorpVaultCATemplateConfig>(JsonSerializer.Serialize(productInfo));
+                templateConfig = JsonSerializer.Deserialize<HashicorpVaultCATemplateConfig>(JsonSerializer.Serialize(productInfo.ProductParameters));
                 caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(JsonSerializer.Serialize(connectionInfo));
                 logger.LogTrace("successfully deserialized the product and CA config values.");
             }
@@ -439,12 +465,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError(LogHandler.FlattenException(ex));
                 throw;
             }
-            // make sure Role Name is present in the template config
-            if (string.IsNullOrEmpty(productInfo.ProductParameters[Constants.TemplateConfig.ROLENAME] as string))
-            {
-                errors.Add($"The '{Constants.TemplateConfig.ROLENAME}' is required.");
-            }
-
+                        
             // if any errors, throw
             if (errors.Any())
             {
