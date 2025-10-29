@@ -133,6 +133,10 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             {
                 var response = await _vaultHttp.GetAsync<CertResponse>($"cert/{certSerial}");
                 logger.LogTrace($"successfully received a response for certificate with serial number: {certSerial}");
+                logger.LogTrace($"--response data--");
+                logger.LogTrace($"cert string: {response.Certificate}");
+                logger.LogTrace($"revocation time: {response.RevocationTime}");
+
                 return response;
             }
             catch (Exception ex)
