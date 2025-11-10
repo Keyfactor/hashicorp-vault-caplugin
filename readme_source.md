@@ -95,7 +95,7 @@ Certificates issued for the Hashicorp Vault CA from within the Keyfactor Command
     1. Create an entry for each of the PKI secrets engine roles you would like to use for issuing certificates from the Hashicorp Vault CA.          
     1. Navigate to the "Certificate Authorities" tab and click "Edit"
     1. In the "Edit CA" window, navigate to the "Templates" tab.
-    1. Create an association between each of the certificate profiles we just created with the PKI secrets engine roles retreived from Vault.
+    1. Create an association between each of the certificate profiles we just created with the PKI secrets engine roles retrieved from Vault.
     
 ### Configure the CA in Keyfactor Command
 
