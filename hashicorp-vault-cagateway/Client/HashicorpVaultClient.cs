@@ -132,7 +132,13 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             try
             {
                 var response = await _vaultHttp.GetAsync<CertResponse>($"cert/{certSerial}");
+                
                 logger.LogTrace($"successfully received a response for certificate with serial number: {certSerial}");
+                logger.LogTrace($"--response data--");
+                logger.LogTrace($"cert string: {response.Certificate}");
+                logger.LogTrace($"revocation time: {response.RevocationTime}");
+                
+
                 return response;
             }
             catch (Exception ex)
@@ -189,7 +195,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         }
 
         /// <summary>
-        /// Retreives all serial numbers for issued certificates 
+        /// Retrieves all serial numbers for issued certificates 
         /// </summary>
         /// <returns>a list of the certificate serial number strings</returns>
         public async Task<List<string>> GetAllCertSerialNumbers()
@@ -247,7 +253,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         }
 
         /// <summary>
-        /// Retreives the metadata for the certificate
+        /// Retrieves the metadata for the certificate
         /// </summary>
         /// <param name="certSerial"></param>
         /// <returns></returns>
@@ -275,7 +281,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
             catch (Exception ex)
             { 
-                logger.LogError($"an error occurred when attempting to retreive the certificate metadata: {ex.Message}");
+                logger.LogError($"an error occurred when attempting to retrieve the certificate metadata: {ex.Message}");
                 throw;
             }            
             finally { logger.MethodExit(); }

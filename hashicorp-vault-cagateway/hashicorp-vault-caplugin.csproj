@@ -37,6 +37,7 @@
 		<PackageReference Include="Keyfactor.AnyGateway.IAnyCAPlugin" Version="3.0.0" />
 		<PackageReference Include="Keyfactor.Logging" Version="1.1.2" />
 		<PackageReference Include="Keyfactor.PKI" Version="5.5.0" />
+		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<PackageReference Include="RestSharp" Version="112.1.0" />
 		<PackageReference Include="System.Formats.Asn1" Version="9.0.0" />
 		<PackageReference Include="System.Net.Http.WinHttpHandler" Version="9.0.0" />

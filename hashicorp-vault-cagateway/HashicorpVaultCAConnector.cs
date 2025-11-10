@@ -54,6 +54,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             _caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(rawConfig);
             logger.MethodExit(LogLevel.Trace);
             _client = new HashicorpVaultClient(_caConfig);
+            _certificateDataReader = certificateDataReader;
         }
 
         /// <summary>
@@ -239,7 +240,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
             catch (Exception ex)
             {
-                logger.LogError($"failed to retreive serial numbers: {LogHandler.FlattenException(ex)}");
+                logger.LogError($"failed to retrieve serial numbers: {LogHandler.FlattenException(ex)}");
                 throw;
             }
 
@@ -250,7 +251,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 CertResponse certFromVault = null;
                 var dbStatus = -1;
 
-                // first, retreive the details from Vault
+                // first, retrieve the details from Vault
                 try
                 {
                     logger.LogTrace($"Calling GetCertificate on our client, passing serial number: {certSerial}");
@@ -258,7 +259,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError($"Failed to retreive details for certificate with serial number {certSerial} from Vault.  Errors: {LogHandler.FlattenException(ex)}");
+                    logger.LogError($"Failed to retrieve details for certificate with serial number {certSerial} from Vault.  Errors: {LogHandler.FlattenException(ex)}");
                     throw;
                 }
                 logger.LogTrace($"converting {certSerial} to database trackingId");
@@ -268,7 +269,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 // then, check for an existing local entry
                 try
                 {
-                    logger.LogTrace($"attempting to retreive status of cert with tracking id {trackingId} from the database");
+                    logger.LogTrace($"attempting to retrieve status of cert with tracking id {trackingId} from the database");
                     dbStatus = await _certificateDataReader.GetStatusByRequestID(trackingId);
                 }
                 catch
@@ -280,7 +281,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 {
                     logger.LogTrace($"adding cert with serial {trackingId} to the database.  fullsync is {fullSync}, and the certificate {(dbStatus == -1 ? "does not yet exist" : "already exists")} in the database.");
 
-                    logger.LogTrace("attempting to retreive the role name (productId) from the certificate metadata, if available");
+                    logger.LogTrace("attempting to retrieve the role name (productId) from the certificate metadata, if available");
 
                     var metaData = new MetadataResponse();
                     
@@ -290,7 +291,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     }
                     catch (Exception) 
                     {
-                        logger.LogTrace("an error occurred when attempting to retreive the metadata, continuing..");
+                        logger.LogTrace("an error occurred when attempting to retrieve the metadata, continuing..");
                     }
 
                     var newCert = new AnyCAPluginCertificate
@@ -422,7 +423,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             _client = new HashicorpVaultClient(config);
 
-            // attempt an authenticated request to retreive role names
+            // attempt an authenticated request to retrieve role names
             try
             {
                 logger.LogTrace("making an authenticated request to the Vault server to verify credentials (listing role names)..");
