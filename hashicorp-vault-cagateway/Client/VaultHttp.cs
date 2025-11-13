@@ -8,6 +8,7 @@
 using Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy;
 using Keyfactor.Logging;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using RestSharp;
 using RestSharp.Serializers.Json;
 using System;
@@ -15,6 +16,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
 {
@@ -35,13 +37,13 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
 
             _serializerOptions = new()
             {
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+                DefaultIgnoreCondition = JsonIgnoreCondition.Never,
                 RespectNullableAnnotations = true,
                 PropertyNameCaseInsensitive = true,
-                PreferredObjectCreationHandling = JsonObjectCreationHandling.Replace,
+                PreferredObjectCreationHandling = JsonObjectCreationHandling.Replace                
             };
 
-            var restClientOptions = new RestClientOptions($"{host.TrimEnd('/')}/v1") { ThrowOnAnyError = true };
+            var restClientOptions = new RestClientOptions($"{host.TrimEnd('/')}/v1") { ThrowOnAnyError = true  };
             _restClient = new RestClient(restClientOptions, configureSerialization: s => s.UseSystemTextJson(_serializerOptions));
 
             _mountPoint = mountPoint.TrimStart('/').TrimEnd('/'); // remove leading and trailing slashes
@@ -69,19 +71,28 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
         public async Task<T> GetAsync<T>(string path, Dictionary<string, string> parameters = null)
         {
             logger.MethodEntry();
-            logger.LogTrace($"preparing to send GET request to {path} with parameters {JsonSerializer.Serialize(parameters)}");
-            logger.LogTrace($"will attempt to deserialize the response into a {typeof(T)}");
+            logger.LogTrace($"preparing to send GET request to {path} with parameters {JsonConvert.SerializeObject(parameters)}");
+            
             try
             {
                 var request = new RestRequest($"{_mountPoint}/{path}", Method.Get);
-                if (parameters != null) { request.AddJsonBody(parameters); }
-
-                var response = await _restClient.ExecuteGetAsync<T>(request);
+                if (parameters != null && parameters.Keys.Count > 0) { request.AddJsonBody(parameters); }
+                var response = await _restClient.ExecuteGetAsync(request);
+                
                 logger.LogTrace($"raw response: {response.Content}");
 
-                response.ThrowIfError();
+                logger.LogTrace($"response status: {response.StatusCode}");
 
-                return response.Data;
+                logger.LogTrace($"response error msg: {response.ErrorMessage}");
+
+                response.ThrowIfError();
+                if (string.IsNullOrEmpty(response.Content)) throw new Exception(response.ErrorMessage ?? "no content returned from Vault");
+
+                logger.LogTrace($"deserializing the response into a {typeof(T)}");
+                var serialized = JsonConvert.DeserializeObject<T>(response.Content);
+
+                logger.LogTrace($"successfully deserialized the reponse");
+                return serialized;
             }
             catch (Exception ex)
             {
@@ -108,7 +119,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 var request = new RestRequest(resourcePath, Method.Post);
                 if (parameters != null)
                 {
-                    string serializedParams = JsonSerializer.Serialize(parameters, _serializerOptions);
+                    string serializedParams = JsonConvert.SerializeObject(parameters);
                     logger.LogTrace($"serialized parameters (from {parameters.GetType()?.Name}): {serializedParams}");
                     request.AddJsonBody(serializedParams);
                 }
@@ -127,7 +138,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
 
                 if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
                 {
-                    errorResponse = JsonSerializer.Deserialize<ErrorResponse>(response.Content!);
+                    errorResponse = JsonConvert.DeserializeObject<ErrorResponse>(response.Content ?? "no content");
                     string allErrors = "(Bad Request)";
                     if (errorResponse?.Errors.Count > 0)
                     {
