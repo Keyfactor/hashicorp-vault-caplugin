@@ -18,6 +18,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Reflection;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 {
@@ -50,11 +51,22 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         {
             logger.MethodEntry(LogLevel.Trace);
             string rawConfig = JsonSerializer.Serialize(configProvider.CAConnectionData);
-            logger.LogTrace($"serialized config: {rawConfig}");
             _caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(rawConfig);
             logger.MethodExit(LogLevel.Trace);
             _client = new HashicorpVaultClient(_caConfig);
             _certificateDataReader = certificateDataReader;
+
+            Assembly targetAssembly = typeof(HashicorpVaultCAConnector).Assembly;
+
+            // Get the AssemblyName object
+            AssemblyName assemblyName = targetAssembly?.GetName();
+
+            // Get the Version object
+            Version version = assemblyName?.Version;
+
+            logger.LogTrace($"-- {assemblyName?.Name ?? "unknown"} v{version}  --");
+
+            logger.LogTrace($"serialized config: {rawConfig}");
         }
 
         /// <summary>
@@ -264,7 +276,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 }
                 logger.LogTrace($"converting {certSerial} to database trackingId");
 
-                var trackingId =  certSerial.Replace(":", "-"); // we store with '-'; hashi stores with ':'
+                var trackingId = certSerial.Replace(":", "-"); // we store with '-'; hashi stores with ':'
 
                 // then, check for an existing local entry
                 try
@@ -284,12 +296,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     logger.LogTrace("attempting to retrieve the role name (productId) from the certificate metadata, if available");
 
                     var metaData = new MetadataResponse();
-                    
+
                     try
                     {
                         metaData = await _client.GetCertMetadata(certSerial);
                     }
-                    catch (Exception) 
+                    catch (Exception)
                     {
                         logger.LogTrace("an error occurred when attempting to retrieve the metadata, continuing..");
                     }
@@ -299,11 +311,11 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                         CARequestID = trackingId,
                         Certificate = certFromVault.Certificate,
                         Status = certFromVault.RevocationTime != null ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
-                        RevocationDate = certFromVault.RevocationTime,                        
+                        RevocationDate = certFromVault.RevocationTime,
                     };
 
                     // if we were able to get the role name from metadata, we include it
-                    if (!string.IsNullOrEmpty(metaData?.Role)) 
+                    if (!string.IsNullOrEmpty(metaData?.Role))
                     {
                         newCert.ProductID = metaData.Role;
                     }
@@ -347,7 +359,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// </summary>
         /// <param name="connectionInfo">The information used to connect to the CA.</param>
         public async Task ValidateCAConnectionInfo(Dictionary<string, object> connectionInfo)
-        {            
+        {
             logger.MethodEntry();
             logger.LogTrace(message: $"Validating CA connection info: {JsonSerializer.Serialize(connectionInfo)}");
 
@@ -373,7 +385,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             // make sure an authentication mechanism is defined (either certificate or token)
             var token = connectionInfo[Constants.CAConfig.TOKEN] as string;
-            
+
             //var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
 
             var cert = string.Empty; // temporary until client cert auth into vault is implemented
@@ -466,7 +478,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError(LogHandler.FlattenException(ex));
                 throw;
             }
-                        
+
             // if any errors, throw
             if (errors.Any())
             {
