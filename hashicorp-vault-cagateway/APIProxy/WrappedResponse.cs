@@ -12,6 +12,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 {
     public class WrappedResponse<T>
     {
+        [JsonPropertyName("request_id")]
+        public string RequestId { get; set; }
+
         [JsonPropertyName("lease_id")]
         public string LeaseId { get; set; }
 
@@ -29,6 +32,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 
         [JsonPropertyName("mount_point")]
         public string MountPoint { get; set; }
+
+        [JsonPropertyName("mount_type")]
+        public string MountType { get; set; }
 
         [JsonPropertyName("mount_running_plugin_version")]
         public string PluginVersion { get; set; }
