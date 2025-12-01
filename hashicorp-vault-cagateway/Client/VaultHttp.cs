@@ -89,10 +89,11 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 if (string.IsNullOrEmpty(response.Content)) throw new Exception(response.ErrorMessage ?? "no content returned from Vault");
 
                 logger.LogTrace($"deserializing the response into a {typeof(T)}");
-                var serialized = JsonConvert.DeserializeObject<T>(response.Content);
+                var deserialized = JsonConvert.DeserializeObject<T>(response.Content);
 
                 logger.LogTrace($"successfully deserialized the reponse");
-                return serialized;
+                
+                return deserialized;
             }
             catch (Exception ex)
             {
@@ -120,7 +121,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 if (parameters != null)
                 {
                     string serializedParams = JsonConvert.SerializeObject(parameters);
-                    logger.LogTrace($"serialized parameters (from {parameters.GetType()?.Name}): {serializedParams}");
+                    logger.LogTrace($"deserialized parameters (from {parameters.GetType()?.Name}): {serializedParams}");
                     request.AddJsonBody(serializedParams);
                 }
 

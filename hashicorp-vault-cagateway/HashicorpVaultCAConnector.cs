@@ -440,7 +440,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             {
                 logger.LogTrace("making an authenticated request to the Vault server to verify credentials (listing role names)..");
                 var roleNames = await _client.GetRoleNamesAsync();
-                logger.LogTrace($"successfule request: received a response containing {roleNames.Count} role names");
+                logger.LogTrace($"successful request: received a response containing {roleNames?.Count} role names");
             }
             catch (Exception ex)
             {
@@ -583,7 +583,10 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             try
             {
                 logger.LogTrace("requesting role names from vault..");
-                var roleNames = _client.GetRoleNamesAsync().Result;
+                var roleNames = _client.GetRoleNamesAsync().GetAwaiter().GetResult();
+                if (roleNames == null) {
+                    throw new Exception("no role names returned, or deserialization failed.");
+                }
                 logger.LogTrace($"got {roleNames.Count} role names from vault:");
                 foreach (var name in roleNames)
                 {
