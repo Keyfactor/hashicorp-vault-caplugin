@@ -35,13 +35,13 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
 
             _serializerOptions = new()
             {
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
-                RespectNullableAnnotations = true,
+                DefaultIgnoreCondition = JsonIgnoreCondition.Never,
                 PropertyNameCaseInsensitive = true,
-                PreferredObjectCreationHandling = JsonObjectCreationHandling.Replace,
+                RespectNullableAnnotations = true,
+                PreferredObjectCreationHandling = JsonObjectCreationHandling.Replace                
             };
 
-            var restClientOptions = new RestClientOptions($"{host.TrimEnd('/')}/v1") { ThrowOnAnyError = true };
+            var restClientOptions = new RestClientOptions($"{host.TrimEnd('/')}/v1") { ThrowOnAnyError = true  };
             _restClient = new RestClient(restClientOptions, configureSerialization: s => s.UseSystemTextJson(_serializerOptions));
 
             _mountPoint = mountPoint.TrimStart('/').TrimEnd('/'); // remove leading and trailing slashes
@@ -70,18 +70,29 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
         {
             logger.MethodEntry();
             logger.LogTrace($"preparing to send GET request to {path} with parameters {JsonSerializer.Serialize(parameters)}");
-            logger.LogTrace($"will attempt to deserialize the response into a {typeof(T)}");
+            
             try
             {
                 var request = new RestRequest($"{_mountPoint}/{path}", Method.Get);
-                if (parameters != null) { request.AddJsonBody(parameters); }
-
-                var response = await _restClient.ExecuteGetAsync<T>(request);
+                if (parameters != null && parameters.Keys.Count > 0) { request.AddJsonBody(parameters); }
+                var response = await _restClient.ExecuteGetAsync(request);
+                
                 logger.LogTrace($"raw response: {response.Content}");
 
-                response.ThrowIfError();
+                logger.LogTrace($"response status: {response.StatusCode}");
 
-                return response.Data;
+                logger.LogTrace($"response error msg: {response.ErrorMessage}");
+
+                response.ThrowIfError();
+                if (string.IsNullOrEmpty(response.Content)) throw new Exception(response.ErrorMessage ?? "no content returned from Vault");
+
+                logger.LogTrace($"deserializing the response into a {typeof(T)}");                               
+
+                var deserialized = JsonSerializer.Deserialize<T>(response.Content, _serializerOptions);
+
+                logger.LogTrace($"successfully deserialized the response");
+                
+                return deserialized;
             }
             catch (Exception ex)
             {
@@ -108,8 +119,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 var request = new RestRequest(resourcePath, Method.Post);
                 if (parameters != null)
                 {
-                    string serializedParams = JsonSerializer.Serialize(parameters, _serializerOptions);
-                    logger.LogTrace($"serialized parameters (from {parameters.GetType()?.Name}): {serializedParams}");
+                    string serializedParams = JsonSerializer.Serialize(parameters);
+                    logger.LogTrace($"deserialized parameters (from {parameters.GetType()?.Name}): {serializedParams}");
                     request.AddJsonBody(serializedParams);
                 }
 
@@ -127,7 +138,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
 
                 if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
                 {
-                    errorResponse = JsonSerializer.Deserialize<ErrorResponse>(response.Content!);
+                    errorResponse = JsonSerializer.Deserialize<ErrorResponse>(response.Content ?? "no content");
                     string allErrors = "(Bad Request)";
                     if (errorResponse?.Errors.Count > 0)
                     {
