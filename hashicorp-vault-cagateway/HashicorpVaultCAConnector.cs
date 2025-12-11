@@ -18,6 +18,7 @@ using System.Text.Json.Serialization;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Reflection;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 {
@@ -50,10 +51,22 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         {
             logger.MethodEntry(LogLevel.Trace);
             string rawConfig = JsonSerializer.Serialize(configProvider.CAConnectionData);
-            logger.LogTrace($"serialized config: {rawConfig}");
             _caConfig = JsonSerializer.Deserialize<HashicorpVaultCAConfig>(rawConfig);
             logger.MethodExit(LogLevel.Trace);
             _client = new HashicorpVaultClient(_caConfig);
+            _certificateDataReader = certificateDataReader;
+
+            Assembly targetAssembly = typeof(HashicorpVaultCAConnector).Assembly;
+
+            // Get the AssemblyName object
+            AssemblyName assemblyName = targetAssembly?.GetName();
+
+            // Get the Version object
+            Version version = assemblyName?.Version;
+
+            logger.LogTrace($"-- {assemblyName?.Name ?? "unknown"} v{version}  --");
+
+            logger.LogTrace($"serialized config: {rawConfig}");
         }
 
         /// <summary>
@@ -239,7 +252,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             }
             catch (Exception ex)
             {
-                logger.LogError($"failed to retreive serial numbers: {LogHandler.FlattenException(ex)}");
+                logger.LogError($"failed to retrieve serial numbers: {LogHandler.FlattenException(ex)}");
                 throw;
             }
 
@@ -250,7 +263,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 CertResponse certFromVault = null;
                 var dbStatus = -1;
 
-                // first, retreive the details from Vault
+                // first, retrieve the details from Vault
                 try
                 {
                     logger.LogTrace($"Calling GetCertificate on our client, passing serial number: {certSerial}");
@@ -258,17 +271,17 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError($"Failed to retreive details for certificate with serial number {certSerial} from Vault.  Errors: {LogHandler.FlattenException(ex)}");
+                    logger.LogError($"Failed to retrieve details for certificate with serial number {certSerial} from Vault.  Errors: {LogHandler.FlattenException(ex)}");
                     throw;
                 }
                 logger.LogTrace($"converting {certSerial} to database trackingId");
 
-                var trackingId =  certSerial.Replace(":", "-"); // we store with '-'; hashi stores with ':'
+                var trackingId = certSerial.Replace(":", "-"); // we store with '-'; hashi stores with ':'
 
                 // then, check for an existing local entry
                 try
                 {
-                    logger.LogTrace($"attempting to retreive status of cert with tracking id {trackingId} from the database");
+                    logger.LogTrace($"attempting to retrieve status of cert with tracking id {trackingId} from the database");
                     dbStatus = await _certificateDataReader.GetStatusByRequestID(trackingId);
                 }
                 catch
@@ -280,29 +293,30 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 {
                     logger.LogTrace($"adding cert with serial {trackingId} to the database.  fullsync is {fullSync}, and the certificate {(dbStatus == -1 ? "does not yet exist" : "already exists")} in the database.");
 
-                    logger.LogTrace("attempting to retreive the role name (productId) from the certificate metadata, if available");
+                    logger.LogTrace("attempting to retrieve the role name (productId) from the certificate metadata, if available");
 
                     var metaData = new MetadataResponse();
-                    
+
                     try
                     {
                         metaData = await _client.GetCertMetadata(certSerial);
                     }
-                    catch (Exception) 
+                    catch (Exception ex)
                     {
-                        logger.LogTrace("an error occurred when attempting to retreive the metadata, continuing..");
+                        logger.LogTrace($"an error occurred when attempting to retrieve the metadata, continuing.. {LogHandler.FlattenException(ex)}");
                     }
+
 
                     var newCert = new AnyCAPluginCertificate
                     {
                         CARequestID = trackingId,
                         Certificate = certFromVault.Certificate,
                         Status = certFromVault.RevocationTime != null ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
-                        RevocationDate = certFromVault.RevocationTime,                        
+                        RevocationDate = certFromVault.RevocationTime,
                     };
 
                     // if we were able to get the role name from metadata, we include it
-                    if (!string.IsNullOrEmpty(metaData?.Role)) 
+                    if (!string.IsNullOrEmpty(metaData?.Role))
                     {
                         newCert.ProductID = metaData.Role;
                     }
@@ -346,7 +360,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         /// </summary>
         /// <param name="connectionInfo">The information used to connect to the CA.</param>
         public async Task ValidateCAConnectionInfo(Dictionary<string, object> connectionInfo)
-        {            
+        {
             logger.MethodEntry();
             logger.LogTrace(message: $"Validating CA connection info: {JsonSerializer.Serialize(connectionInfo)}");
 
@@ -372,7 +386,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             // make sure an authentication mechanism is defined (either certificate or token)
             var token = connectionInfo[Constants.CAConfig.TOKEN] as string;
-            
+
             //var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
 
             var cert = string.Empty; // temporary until client cert auth into vault is implemented
@@ -422,12 +436,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             _client = new HashicorpVaultClient(config);
 
-            // attempt an authenticated request to retreive role names
+            // attempt an authenticated request to retrieve role names
             try
             {
                 logger.LogTrace("making an authenticated request to the Vault server to verify credentials (listing role names)..");
                 var roleNames = await _client.GetRoleNamesAsync();
-                logger.LogTrace($"successfule request: received a response containing {roleNames.Count} role names");
+                logger.LogTrace($"successful request: received a response containing {roleNames?.Count} role names");
             }
             catch (Exception ex)
             {
@@ -465,7 +479,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError(LogHandler.FlattenException(ex));
                 throw;
             }
-                        
+
             // if any errors, throw
             if (errors.Any())
             {
@@ -570,7 +584,10 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             try
             {
                 logger.LogTrace("requesting role names from vault..");
-                var roleNames = _client.GetRoleNamesAsync().Result;
+                var roleNames = _client.GetRoleNamesAsync().GetAwaiter().GetResult();
+                if (roleNames == null) {
+                    throw new Exception("no role names returned, or deserialization failed.");
+                }
                 logger.LogTrace($"got {roleNames.Count} role names from vault:");
                 foreach (var name in roleNames)
                 {
