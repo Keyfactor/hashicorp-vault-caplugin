@@ -14,6 +14,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
@@ -35,10 +36,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
 
             _serializerOptions = new()
             {
-                DefaultIgnoreCondition = JsonIgnoreCondition.Never,
-                PropertyNameCaseInsensitive = true,
-                RespectNullableAnnotations = true,
-                PreferredObjectCreationHandling = JsonObjectCreationHandling.Replace                
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+                PropertyNameCaseInsensitive = true,                
+                PreferredObjectCreationHandling = JsonObjectCreationHandling.Populate
             };
 
             var restClientOptions = new RestClientOptions($"{host.TrimEnd('/')}/v1") { ThrowOnAnyError = true  };
@@ -69,7 +69,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
         public async Task<T> GetAsync<T>(string path, Dictionary<string, string> parameters = null)
         {
             logger.MethodEntry();
-            logger.LogTrace($"preparing to send GET request to {path} with parameters {JsonSerializer.Serialize(parameters)}");
+            logger.LogTrace($"preparing to send GET request to {_mountPoint}/{path} with parameters {JsonSerializer.Serialize(parameters)}");
             
             try
             {
@@ -77,7 +77,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 if (parameters != null && parameters.Keys.Count > 0) { request.AddJsonBody(parameters); }
                 var response = await _restClient.ExecuteGetAsync(request);
                 
-                logger.LogTrace($"raw response: {response.Content}");
+                logger.LogTrace($"raw response: {JsonSerializer.Serialize(response)}");
 
                 logger.LogTrace($"response status: {response.StatusCode}");
 

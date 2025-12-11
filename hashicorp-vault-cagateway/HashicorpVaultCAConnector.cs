@@ -301,10 +301,11 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     {
                         metaData = await _client.GetCertMetadata(certSerial);
                     }
-                    catch (Exception)
+                    catch (Exception ex)
                     {
-                        logger.LogTrace("an error occurred when attempting to retrieve the metadata, continuing..");
+                        logger.LogTrace($"an error occurred when attempting to retrieve the metadata, continuing.. {LogHandler.FlattenException(ex)}");
                     }
+
 
                     var newCert = new AnyCAPluginCertificate
                     {

@@ -18,6 +18,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
         [JsonPropertyName("revocation_time_rfc3339")]
         public DateTime? RevocationTime { get; set; }
 
+        [JsonPropertyName("revocation_time")]
+        public int RevocationTimestamp { get; set; }
+
         [JsonPropertyName("issuer_id")]
         public string IssuerId { get; set; }
     }
