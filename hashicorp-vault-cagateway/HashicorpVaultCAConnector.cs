@@ -321,15 +321,6 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     {
                         newCert.ProductID = metaData.Role;
                     }
-                    else
-                    {
-                        /// lookup table.. this should not be in the production release
-                        logger.LogTrace($"looking for cert ID {trackingId} in reference table..");
-                        var roleName = CertRoleLookup.GetRoleNameForCertSerial(trackingId);
-                        logger.LogTrace($"role name was{(string.IsNullOrEmpty(roleName) ? " not" : "")} found.  {(!string.IsNullOrEmpty(roleName) ? roleName : "")}");
-                        if (!string.IsNullOrEmpty(roleName)) newCert.ProductID = roleName;
-                        ///
-                    }
 
                     try
                     {
@@ -351,12 +342,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     var revoked = !string.IsNullOrEmpty(certFromVault.RevocationTime);
                     logger.LogTrace($"revocationTime = {certFromVault.RevocationTime} so the cert will be marked as{(revoked ? "" : " not")} revoked.");
                     var vaultStatus = revoked ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED;
-                    /// lookup table.. this should not be in the production release
-                    logger.LogTrace($"looking for cert ID {trackingId} in reference table..");
-                    var roleName = CertRoleLookup.GetRoleNameForCertSerial(trackingId);
-                    logger.LogTrace($"role name was{(string.IsNullOrEmpty(roleName) ? " not" : "")} found.  {(!string.IsNullOrEmpty(roleName) ? roleName : "")}");
-
-                    ///
+                    
                     if (vaultStatus != dbStatus) // if there is a mismatch, we need to update
                     {
                         var newCert = new AnyCAPluginCertificate
@@ -366,9 +352,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                             Status = vaultStatus,
                             RevocationDate = !string.IsNullOrEmpty(certFromVault.RevocationTime) ? DateTime.Parse(certFromVault.RevocationTime) : null,                            
                             // ProductID is not available via the API after the initial issuance.  we do not want to overwrite                            
-                        };
-
-                        if (!string.IsNullOrEmpty(roleName)) newCert.ProductID = roleName;
+                        };                    
                         
                         blockingBuffer.Add(newCert);
                     }
