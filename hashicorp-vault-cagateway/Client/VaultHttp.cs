@@ -36,9 +36,10 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
 
             _serializerOptions = new()
             {
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-                PropertyNameCaseInsensitive = true,                
-                PreferredObjectCreationHandling = JsonObjectCreationHandling.Populate
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+                PropertyNameCaseInsensitive = true,
+                RespectNullableAnnotations = true,                
+                PreferredObjectCreationHandling = JsonObjectCreationHandling.Replace
             };
 
             var restClientOptions = new RestClientOptions($"{host.TrimEnd('/')}/v1") { ThrowOnAnyError = true  };
@@ -78,6 +79,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 var response = await _restClient.ExecuteGetAsync(request);
                 
                 logger.LogTrace($"raw response: {JsonSerializer.Serialize(response)}");
+
+                logger.LogTrace($"response content: {response.Content}");
 
                 logger.LogTrace($"response status: {response.StatusCode}");
 

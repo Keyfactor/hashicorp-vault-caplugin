@@ -36,7 +36,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             _serializerOptions = new()
             {
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingDefault,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
                 RespectNullableAnnotations = true,
                 PropertyNameCaseInsensitive = true,
                 PreferredObjectCreationHandling = JsonObjectCreationHandling.Replace,
@@ -170,7 +170,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     CARequestID = caRequestID,
                     Certificate = cert.Certificate,
                     Status = revoked ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
-                    RevocationDate = cert.RevocationTime
+                    RevocationDate = cert.RevocationTime != null ? DateTime.Parse(cert.RevocationTime.ToString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal) : null
                 };
 
                 return result;
@@ -268,6 +268,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 {
                     logger.LogTrace($"Calling GetCertificate on our client, passing serial number: {certSerial}");
                     certFromVault = await _client.GetCertificate(certSerial);
+                    logger.LogTrace($"got cert from vault.  Cert content length: {certFromVault.Certificate?.Length}");
                 }
                 catch (Exception ex)
                 {
@@ -311,20 +312,32 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     {
                         CARequestID = trackingId,
                         Certificate = certFromVault.Certificate,
-                        Status = certFromVault.RevocationTime != null ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
-                        RevocationDate = certFromVault.RevocationTime,
+                        Status = !string.IsNullOrEmpty(certFromVault.RevocationTime) ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
+                        RevocationDate = !string.IsNullOrEmpty(certFromVault.RevocationTime) ? DateTime.Parse(certFromVault.RevocationTime) : null
                     };
-
+                    
                     // if we were able to get the role name from metadata, we include it
                     if (!string.IsNullOrEmpty(metaData?.Role))
                     {
                         newCert.ProductID = metaData.Role;
                     }
+                    else
+                    {
+                        /// lookup table.. this should not be in the production release
+                        logger.LogTrace($"looking for cert ID {trackingId} in reference table..");
+                        var roleName = CertRoleLookup.GetRoleNameForCertSerial(trackingId);
+                        logger.LogTrace($"role name was{(string.IsNullOrEmpty(roleName) ? " not" : "")} found.  {(!string.IsNullOrEmpty(roleName) ? roleName : "")}");
+                        if (!string.IsNullOrEmpty(roleName)) newCert.ProductID = roleName;
+                        ///
+                    }
 
                     try
                     {
-                        logger.LogTrace($"writing the result.");
-                        blockingBuffer.Add(newCert);
+                        logger.LogTrace($"writing the result..");
+                        logger.LogTrace($"certificate ID: {newCert.CARequestID}");
+                        logger.LogTrace($"certificate contents: {newCert.Certificate}");
+                        logger.LogTrace($"certificate status: {newCert.Status}");
+                        blockingBuffer.Add(newCert, cancelToken);
                         logger.LogTrace($"successfully added certificate to the database.");
                     }
                     catch (Exception ex)
@@ -335,8 +348,15 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 }
                 else // the cert exists in the database; just update the status if necessary
                 {
-                    var revoked = certFromVault.RevocationTime != null;
+                    var revoked = !string.IsNullOrEmpty(certFromVault.RevocationTime);
+                    logger.LogTrace($"revocationTime = {certFromVault.RevocationTime} so the cert will be marked as{(revoked ? "" : " not")} revoked.");
                     var vaultStatus = revoked ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED;
+                    /// lookup table.. this should not be in the production release
+                    logger.LogTrace($"looking for cert ID {trackingId} in reference table..");
+                    var roleName = CertRoleLookup.GetRoleNameForCertSerial(trackingId);
+                    logger.LogTrace($"role name was{(string.IsNullOrEmpty(roleName) ? " not" : "")} found.  {(!string.IsNullOrEmpty(roleName) ? roleName : "")}");
+
+                    ///
                     if (vaultStatus != dbStatus) // if there is a mismatch, we need to update
                     {
                         var newCert = new AnyCAPluginCertificate
@@ -344,13 +364,18 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                             CARequestID = trackingId,
                             Certificate = certFromVault.Certificate,
                             Status = vaultStatus,
-                            RevocationDate = certFromVault.RevocationTime
+                            RevocationDate = !string.IsNullOrEmpty(certFromVault.RevocationTime) ? DateTime.Parse(certFromVault.RevocationTime) : null,                            
                             // ProductID is not available via the API after the initial issuance.  we do not want to overwrite                            
                         };
+
+                        if (!string.IsNullOrEmpty(roleName)) newCert.ProductID = roleName;
+                        
+                        blockingBuffer.Add(newCert);
                     }
                 }
                 count++;
             }
+            blockingBuffer.CompleteAdding();
             logger.LogTrace($"Completed sync of {count} certificates");
             logger.MethodExit();
         }
@@ -585,7 +610,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             {
                 logger.LogTrace("requesting role names from vault..");
                 var roleNames = _client.GetRoleNamesAsync().GetAwaiter().GetResult();
-                if (roleNames == null) {
+                if (roleNames == null)
+                {
                     throw new Exception("no role names returned, or deserialization failed.");
                 }
                 logger.LogTrace($"got {roleNames.Count} role names from vault:");

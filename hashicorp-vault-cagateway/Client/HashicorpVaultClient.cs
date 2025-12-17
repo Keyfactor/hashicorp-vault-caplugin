@@ -131,15 +131,15 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             try
             {
-                var response = await _vaultHttp.GetAsync<CertResponse>($"cert/{certSerial}");
+                var response = await _vaultHttp.GetAsync<WrappedResponse<CertResponse>>($"cert/{certSerial}");
                 
                 logger.LogTrace($"successfully received a response for certificate with serial number: {certSerial}");
                 logger.LogTrace($"--response data--");
-                logger.LogTrace($"cert string: {response.Certificate}");
-                logger.LogTrace($"revocation time: {response.RevocationTime}");
+                logger.LogTrace($"cert string: {response.Data?.Certificate}");
+                logger.LogTrace($"revocation time: {response.Data?.RevocationTime}");
                 
 
-                return response;
+                return response.Data;
             }
             catch (Exception ex)
             {
@@ -158,9 +158,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.LogTrace($"making request to revoke cert with serial: {serial}");
             try
             {                
-                var response = await _vaultHttp.PostAsync<RevokeResponse>("revoke", new RevokeRequest(serial));
-                logger.LogTrace($"successfully revoked cert with serial {serial}, revocation time:  {response.RevocationTime}");
-                return response;
+                var response = await _vaultHttp.PostAsync<WrappedResponse<RevokeResponse>>("revoke", new RevokeRequest(serial));
+                logger.LogTrace($"successfully revoked cert with serial {serial}, revocation time:  {response.Data.RevocationTime}");
+                return response.Data;
             }
             catch (Exception ex)
             {
@@ -205,7 +205,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             try
             {
                 var res = await _vaultHttp.GetAsync<WrappedResponse<KeyedList>>("certs/?list=true");
-                return res.Data.Entries;
+                return res.Data?.Entries;
             }
             catch (Exception ex)
             {
@@ -221,8 +221,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             var keys = new List<string>();
             try
             {
-                var res = await _vaultHttp.GetAsync<KeyedList>("certs/revoked");
-                keys = res.Entries;
+                var res = await _vaultHttp.GetAsync<WrappedResponse<KeyedList>>("certs/revoked");
+                keys = res.Data?.Entries;
             }
             catch (Exception ex)
             {
@@ -323,5 +323,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             return serialNumber.Replace(":", "-");
         }
+
+        
     }
 }
