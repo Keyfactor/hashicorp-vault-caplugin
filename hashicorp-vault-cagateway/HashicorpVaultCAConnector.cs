@@ -19,6 +19,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Reflection;
+using System.Runtime.ConstrainedExecution;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 {
@@ -315,7 +316,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                         Status = !string.IsNullOrEmpty(certFromVault.RevocationTime) ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED,
                         RevocationDate = !string.IsNullOrEmpty(certFromVault.RevocationTime) ? DateTime.Parse(certFromVault.RevocationTime) : null
                     };
-                    
+
                     // if we were able to get the role name from metadata, we include it
                     if (!string.IsNullOrEmpty(metaData?.Role))
                     {
@@ -342,7 +343,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                     var revoked = !string.IsNullOrEmpty(certFromVault.RevocationTime);
                     logger.LogTrace($"revocationTime = {certFromVault.RevocationTime} so the cert will be marked as{(revoked ? "" : " not")} revoked.");
                     var vaultStatus = revoked ? (int)EndEntityStatus.REVOKED : (int)EndEntityStatus.GENERATED;
-                    
+
                     if (vaultStatus != dbStatus) // if there is a mismatch, we need to update
                     {
                         var newCert = new AnyCAPluginCertificate
@@ -350,11 +351,11 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                             CARequestID = trackingId,
                             Certificate = certFromVault.Certificate,
                             Status = vaultStatus,
-                            RevocationDate = !string.IsNullOrEmpty(certFromVault.RevocationTime) ? DateTime.Parse(certFromVault.RevocationTime) : null,                            
+                            RevocationDate = certFromVault.RevocationTime != null ? DateTime.Parse(certFromVault.RevocationTime.ToString(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal) : null
                             // ProductID is not available via the API after the initial issuance.  we do not want to overwrite                            
-                        };                    
-                        
-                        blockingBuffer.Add(newCert);
+                        };
+
+                        blockingBuffer.Add(newCert, cancelToken);
                     }
                 }
                 count++;

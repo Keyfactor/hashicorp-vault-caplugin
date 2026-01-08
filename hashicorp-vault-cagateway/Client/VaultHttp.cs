@@ -123,7 +123,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 if (parameters != null)
                 {
                     string serializedParams = JsonSerializer.Serialize(parameters);
-                    logger.LogTrace($"deserialized parameters (from {parameters.GetType()?.Name}): {serializedParams}");
+                    logger.LogTrace($"serialized parameters (from {parameters.GetType()?.Name}): {serializedParams}");
                     request.AddJsonBody(serializedParams);
                 }
 

@@ -205,7 +205,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             try
             {
                 var res = await _vaultHttp.GetAsync<WrappedResponse<KeyedList>>("certs/?list=true");
-                return res.Data?.Entries;
+                return res?.Data?.Entries;
             }
             catch (Exception ex)
             {
@@ -222,7 +222,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             try
             {
                 var res = await _vaultHttp.GetAsync<WrappedResponse<KeyedList>>("certs/revoked");
-                keys = res.Data?.Entries;
+                keys = res?.Data?.Entries;
             }
             catch (Exception ex)
             {
