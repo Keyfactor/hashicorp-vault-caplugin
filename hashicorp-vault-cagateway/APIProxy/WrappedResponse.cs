@@ -1,4 +1,4 @@
-﻿// Copyright 2024 Keyfactor
+﻿// Copyright 2025 Keyfactor
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 // Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,6 +12,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 {
     public class WrappedResponse<T>
     {
+        [JsonPropertyName("request_id")]
+        public string RequestId { get; set; }
+
         [JsonPropertyName("lease_id")]
         public string LeaseId { get; set; }
 
@@ -29,6 +32,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 
         [JsonPropertyName("mount_point")]
         public string MountPoint { get; set; }
+
+        [JsonPropertyName("mount_type")]
+        public string MountType { get; set; }
 
         [JsonPropertyName("mount_running_plugin_version")]
         public string PluginVersion { get; set; }
