@@ -41,7 +41,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 PreferredObjectCreationHandling = JsonObjectCreationHandling.Replace,
             };
 
-            var restClientOptions = new RestClientOptions($"{host.TrimEnd('/')}/v1") { ThrowOnAnyError = true };
+            var restClientOptions = new RestClientOptions($"{host.TrimEnd('/')}/v1");
             _restClient = new RestClient(restClientOptions, configureSerialization: s => s.UseSystemTextJson(_serializerOptions));
 
             _mountPoint = mountPoint.TrimStart('/').TrimEnd('/'); // remove leading and trailing slashes
@@ -109,7 +109,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                 {
                     string serializedParams = JsonSerializer.Serialize(parameters, _serializerOptions);
                     logger.LogTrace($"serialized parameters (from {parameters.GetType()?.Name}): {serializedParams}");
-                    request.AddJsonBody(serializedParams);
+                    request.AddStringBody(serializedParams, ContentType.Json);
                 }
 
                 logger.LogTrace($"full url for the request: {_restClient.Options.BaseUrl}/{request.Resource}");
@@ -135,6 +135,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.Client
                     logger.LogTrace($"errors: {allErrors}");
                     throw new Exception(allErrors);
                 }
+
+                response.ThrowIfError();
                 return response.Data;
             }
             catch (Exception ex)
