@@ -16,6 +16,14 @@
 
   Fixed by removing `ThrowOnAnyError = true` from `RestClientOptions` and adding `response.ThrowIfError()` after the explicit `BadRequest` handler, so non-2xx responses that are not `BadRequest` still surface as exceptions while `BadRequest` responses are handled with full Vault error body parsing.
 
+- **`ValidateCAConnectionInfo` and `ValidateProductInfo`: `KeyNotFoundException` on gateway config PUT/POST**
+
+  Both validation methods used direct `Dictionary.get_Item` indexers (`connectionInfo[key]`) to read parameters. The gateway does not always pre-populate every parameter key before calling validation, so any absent key threw `KeyNotFoundException` and surfaced as an opaque HTTP 500 from the gateway config endpoint.
+
+  Fixed by replacing all direct indexers with `TryGetValue` calls throughout both methods.
+
+  Additionally relaxed the `RoleName` requirement in `ValidateProductInfo`: the `Enroll` path already falls back to `ProductID` when `RoleName` is absent, so the validator no longer rejects configurations that omit it. The check now only errors if `RoleName` is explicitly present but empty.
+
 ### Changed
 
 - Dropped .NET 6.0 target (EOL). The project now targets `net8.0` and `net10.0`.
