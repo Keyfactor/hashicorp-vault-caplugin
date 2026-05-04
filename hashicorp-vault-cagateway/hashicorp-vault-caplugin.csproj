@@ -9,7 +9,7 @@
 		<ProduceReferenceAssembly>False</ProduceReferenceAssembly>
 		<CopyLocalLockFileAssemblies>True</CopyLocalLockFileAssemblies>
 		<LangVersion>12.0</LangVersion>
-		<AppendTargetFrameworkToOutputPath>False</AppendTargetFrameworkToOutputPath>
+		<AppendTargetFrameworkToOutputPath>True</AppendTargetFrameworkToOutputPath>
 		<AppendRuntimeIdentifierToOutputPath>False</AppendRuntimeIdentifierToOutputPath>
 	</PropertyGroup>
 
@@ -18,7 +18,7 @@
 	  <Optimize>False</Optimize>
 	  <Deterministic>True</Deterministic>
 		<BaseOutputPath>bin</BaseOutputPath>
-		<AppendTargetFrameworkToOutputPath>False</AppendTargetFrameworkToOutputPath>
+		<AppendTargetFrameworkToOutputPath>True</AppendTargetFrameworkToOutputPath>
 		<AppendRuntimeIdentifierToOutputPath>False</AppendRuntimeIdentifierToOutputPath>
 	</PropertyGroup>
 
