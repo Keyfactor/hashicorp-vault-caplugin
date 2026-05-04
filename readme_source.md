@@ -23,6 +23,21 @@ Make sure the following information is available, as it will be needed to comple
 - An authentication token that has sufficient authority to perform operations on the PKI Secrets engine
 - PKI Secrets Engine Roles defined that will correspond to certificate templates to be used when signing certificates with the CA.
 
+### Managing Certificates Issued Outside of Keyfactor Command
+
+:warning: Important!
+
+The role name used when issuing the certificate is required in order to store the associated details for the certificate within Keyfactor Command.
+The Hashicorp Vault PKI Secrets Engine does not store the role name by default.  
+
+Because of this, certificates generated outside of Keyfactor Command will _not_ have their associated data available within Command **unless the following two conditions are met**:
+- The certificate was generated in an instance of Hashicorp Vault with the Enterprise License, to allow for certificate metadata to be stored.
+- There is certificate metadata associated with the certificate
+
+The metadata value provided when the cert is issued outside of Command can be blank, it just needs to have been provided in order for the role used for issuance to be stored.
+Certificates issued for the Hashicorp Vault CA from within the Keyfactor Command platform do not need to have metadata associated with it in order to view the certificate details.
+
+
 ### Steps
 
 1. Install the AnyCA Gateway Rest per the [official Keyfactor documentation](https://software.keyfactor.com/Guides/AnyCAGatewayREST/Content/AnyCAGatewayREST/InstallIntroduction.htm).
@@ -80,7 +95,7 @@ Make sure the following information is available, as it will be needed to comple
     1. Create an entry for each of the PKI secrets engine roles you would like to use for issuing certificates from the Hashicorp Vault CA.          
     1. Navigate to the "Certificate Authorities" tab and click "Edit"
     1. In the "Edit CA" window, navigate to the "Templates" tab.
-    1. Create an association between each of the certificate profiles we just created with the PKI secrets engine roles retreived from Vault.
+    1. Create an association between each of the certificate profiles we just created with the PKI secrets engine roles retrieved from Vault.
     
 ### Configure the CA in Keyfactor Command
 

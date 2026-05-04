@@ -1,4 +1,4 @@
-﻿// Copyright 2024 Keyfactor
+﻿// Copyright 2025 Keyfactor
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at http://www.apache.org/licenses/LICENSE-2.0
 // Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS,
@@ -131,9 +131,15 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             try
             {
-                var response = await _vaultHttp.GetAsync<CertResponse>($"cert/{certSerial}");
+                var response = await _vaultHttp.GetAsync<WrappedResponse<CertResponse>>($"cert/{certSerial}");
+                
                 logger.LogTrace($"successfully received a response for certificate with serial number: {certSerial}");
-                return response;
+                logger.LogTrace($"--response data--");
+                logger.LogTrace($"cert string: {response.Data?.Certificate}");
+                logger.LogTrace($"revocation time: {response.Data?.RevocationTime}");
+                
+
+                return response.Data;
             }
             catch (Exception ex)
             {
@@ -152,9 +158,9 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             logger.LogTrace($"making request to revoke cert with serial: {serial}");
             try
             {                
-                var response = await _vaultHttp.PostAsync<RevokeResponse>("revoke", new RevokeRequest(serial));
-                logger.LogTrace($"successfully revoked cert with serial {serial}, revocation time:  {response.RevocationTime}");
-                return response;
+                var response = await _vaultHttp.PostAsync<WrappedResponse<RevokeResponse>>("revoke", new RevokeRequest(serial));
+                logger.LogTrace($"successfully revoked cert with serial {serial}, revocation time:  {response.Data.RevocationTime}");
+                return response.Data;
             }
             catch (Exception ex)
             {
@@ -189,7 +195,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
         }
 
         /// <summary>
-        /// Retreives all serial numbers for issued certificates 
+        /// Retrieves all serial numbers for issued certificates 
         /// </summary>
         /// <returns>a list of the certificate serial number strings</returns>
         public async Task<List<string>> GetAllCertSerialNumbers()
@@ -199,7 +205,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             try
             {
                 var res = await _vaultHttp.GetAsync<WrappedResponse<KeyedList>>("certs/?list=true");
-                return res.Data.Entries;
+                return res?.Data?.Entries;
             }
             catch (Exception ex)
             {
@@ -215,8 +221,8 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             var keys = new List<string>();
             try
             {
-                var res = await _vaultHttp.GetAsync<KeyedList>("certs/revoked");
-                keys = res.Entries;
+                var res = await _vaultHttp.GetAsync<WrappedResponse<KeyedList>>("certs/revoked");
+                keys = res?.Data?.Entries;
             }
             catch (Exception ex)
             {
@@ -244,6 +250,41 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 throw;
             }
             finally { logger.MethodExit(); }            
+        }
+
+        /// <summary>
+        /// Retrieves the metadata for the certificate
+        /// </summary>
+        /// <param name="certSerial"></param>
+        /// <returns></returns>
+        public async Task<MetadataResponse> GetCertMetadata(string certSerial)
+        {
+            logger.MethodEntry();
+
+            try 
+            {
+                var res = await _vaultHttp.GetAsync<WrappedResponse<MetadataResponse>>($"cert-metadata/{certSerial}");
+                var md = res?.Data;
+                if (md != null)
+                {
+                    logger.LogTrace($"got response from cert-metadata");
+                    logger.LogTrace($"serial number: {md.SerialNumber}");
+                    logger.LogTrace($"issuer id: {md.IssuerId}");
+                    logger.LogTrace($"expiration: {md.Expiration}");
+                    logger.LogTrace($"metadata: {md.CertMetadata}");
+                    logger.LogTrace($"role: {md.Role}");
+                }
+                else {
+                    logger.LogTrace($"no metadata associated with cert {certSerial} could be found.");
+                }
+                return md;
+            }
+            catch (Exception ex)
+            { 
+                logger.LogError($"an error occurred when attempting to retrieve the certificate metadata: {ex.Message}");
+                throw;
+            }            
+            finally { logger.MethodExit(); }
         }
 
         private void SetClientValuesFromConfigs(HashicorpVaultCAConfig caConfig, HashicorpVaultCATemplateConfig templateConfig)
@@ -282,5 +323,7 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
 
             return serialNumber.Replace(":", "-");
         }
+
+        
     }
 }

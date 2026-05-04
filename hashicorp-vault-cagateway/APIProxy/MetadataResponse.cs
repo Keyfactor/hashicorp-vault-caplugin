@@ -5,14 +5,26 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions
 // and limitations under the License.
 
-using System.Collections.Generic;
+using System;
 using System.Text.Json.Serialization;
 
 namespace Keyfactor.Extensions.CAPlugin.HashicorpVault.APIProxy
 {
-    public class ErrorResponse
+    public class MetadataResponse
     {
-        [JsonPropertyName("errors")]
-        public List<string> Errors { get; set; }
+        [JsonPropertyName("issuer_id")]
+        public string IssuerId { get; set; }
+
+        [JsonPropertyName("expiration")]
+        public DateTime? Expiration { get; set; }
+
+        [JsonPropertyName("cert_metadata")]
+        public string CertMetadata { get; set; }
+
+        [JsonPropertyName("role")]
+        public string Role { get; set; }
+
+        [JsonPropertyName("serial_number")]
+        public string SerialNumber { get; set; }
     }
 }
