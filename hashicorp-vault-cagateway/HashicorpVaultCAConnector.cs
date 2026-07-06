@@ -384,22 +384,23 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
             List<string> errors = new List<string>();
 
             // then, we make sure required fields are defined..
-            if (string.IsNullOrEmpty(connectionInfo[Constants.CAConfig.HOST] as string))
+            connectionInfo.TryGetValue(Constants.CAConfig.HOST, out var hostVal);
+            if (string.IsNullOrEmpty(hostVal as string))
             {
                 errors.Add($"The '{Constants.CAConfig.HOST}' is required.");
             }
 
-            if (string.IsNullOrEmpty(connectionInfo[Constants.CAConfig.MOUNTPOINT] as string))
+            connectionInfo.TryGetValue(Constants.CAConfig.MOUNTPOINT, out var mountVal);
+            if (string.IsNullOrEmpty(mountVal as string))
             {
                 errors.Add($"The '{Constants.CAConfig.MOUNTPOINT}' is required.");
             }
 
             // make sure an authentication mechanism is defined (either certificate or token)
-            var token = connectionInfo[Constants.CAConfig.TOKEN] as string;
-
-            //var cert = connectionInfo[Constants.CAConfig.CLIENTCERT] as string;
-
-            var cert = string.Empty; // temporary until client cert auth into vault is implemented
+            connectionInfo.TryGetValue(Constants.CAConfig.TOKEN, out var tokenVal);
+            connectionInfo.TryGetValue(Constants.CAConfig.CLIENTCERT, out var certVal);
+            var token = tokenVal as string;
+            var cert = certVal as string;
 
             if (string.IsNullOrEmpty(token) && string.IsNullOrEmpty(cert))
             {
@@ -488,6 +489,12 @@ namespace Keyfactor.Extensions.CAPlugin.HashicorpVault
                 logger.LogError($"failed to deserialize configuration values.  Please make sure the format is correct.");
                 logger.LogError(LogHandler.FlattenException(ex));
                 throw;
+            }
+            // RoleName is optional — if absent or empty, ProductID is used as the role name (see Enroll).
+            productInfo.ProductParameters.TryGetValue(Constants.TemplateConfig.ROLENAME, out var roleNameVal);
+            if (roleNameVal != null && string.IsNullOrEmpty(roleNameVal as string))
+            {
+                errors.Add($"The '{Constants.TemplateConfig.ROLENAME}' must not be empty if provided.");
             }
 
             // if any errors, throw
